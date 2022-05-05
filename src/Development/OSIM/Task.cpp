@@ -29,7 +29,7 @@ namespace Development
 
     //! We do not model any other states, these can hence be considered 0.
 
-    struct obstacle{
+    struct Obstacle{
       double lat;
       double lon;
       double psi;
