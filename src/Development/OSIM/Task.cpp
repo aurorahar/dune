@@ -74,6 +74,7 @@ namespace Testing
       bool m_waiting_response;
       bool m_executing;
       double c_trans_time;
+      
       static const float c_req_timeout = 10;
 
 
