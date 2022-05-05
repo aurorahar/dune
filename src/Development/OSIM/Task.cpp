@@ -73,8 +73,8 @@ namespace Testing
       // Handling request timeout.
       bool m_waiting_response;
       bool m_executing;
-      double c_trans_time;
-      
+      double c_req_time;
+
       static const float c_req_timeout = 10;
 
 
@@ -257,7 +257,7 @@ namespace Testing
 
         if !(m_waiting_response){
           m_waiting_response = true;
-          c_trans_time = Clock::get();
+          c_req_time = Clock::get();
 
           dispatch(m_command);
           inf("Requested maneuver 'Goto (%f, %f)'. ", man_goto.lat, man_goto.lon);
