@@ -265,7 +265,7 @@ namespace Testing
 
 
         double c_time = Clock_get();
-        if (!(m_executing) || c_time - obstaclec_req_time >=c_req_timeout){
+        if (!(m_executing) || c_time - c_req_time >=c_req_timeout){
             inf("Request timed out. ");
             m_waiting_response = false;
         }
