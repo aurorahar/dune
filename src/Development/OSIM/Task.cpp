@@ -4,7 +4,7 @@
 #include <cmath>
 
 
-namespace Testing
+namespace Development
 {
   //! Obstacle simulator.
   //!
