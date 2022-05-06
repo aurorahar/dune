@@ -121,7 +121,7 @@ namespace DUNE
         return m_max[dimension];
       }
 
-      //! Get the loer limit of the grid along a dimension.
+      //! Get the lower limit of the grid along a dimension.
       //! @param[in] dimension index of the dimension to query.
       //! @return lower limit along the given dimension.
       double

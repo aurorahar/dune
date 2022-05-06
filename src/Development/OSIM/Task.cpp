@@ -44,30 +44,8 @@ namespace Development
   {
     using DUNE_NAMESPACES;
 
-    //! Obstacle State
-    //! Lat, lon : Latidual and longitudal coordinates.
-    //! x, y     : North and East offsets.
-    //! psi      : Rotation over x axis
-    //! u        : Body-fixed x velocity
-    //! vx       : Ground x velocity
-    //! vy       : Ground y velocity
-
-    //! Any other states can be considered 0
-
-    struct Obstacle{
-      double lat;
-      double lon;
-      double psi;
-      double x;
-      double y;
-      double u;
-      double vx;
-      double vy;
-    };
-
     struct Arguments{
       std::vector<double> position;
-      std::vector<double> offset;
       double heading;
       double speed;
       double r_max;
@@ -81,8 +59,8 @@ namespace Development
        //! Arguments.
       Arguments args;
 
-      //! Obstacle state.
-      Obstacle os;
+      //! Obstacle state to be sent.
+      IMC::Target os;
 
       //! Maneuver to be requested.
       IMC::Goto man_goto;
@@ -95,12 +73,10 @@ namespace Development
       //! Time interval for numerical integration.
       double ts;
 
-      // Handling request timeout.
-      bool m_waiting_response;
-      bool m_executing;
-      double c_req_time;
+      //
       double c_ini_time;
-      const float c_req_timeout = 10.0;
+      const float c_init_timeout = 15.0;
+      double m_req_sent;
 
 
       //! Constructor.
@@ -108,18 +84,12 @@ namespace Development
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
-        m_waiting_response(false),
-        m_executing(false)
+        m_req_sent(false)
       {
         param("Initial Position", args.position)
         .description("Initial position of the obstacle.")
         .size(2)
         .units(Units::Degree);
-
-        param("Initial Offset", args.offset)
-        .description("Initial x and y positions.")
-        .size(2)
-        .units(Units::Meter);
 
         param("Heading", args.heading)
         .description("Initial orientation of the obstacle.")
@@ -146,7 +116,6 @@ namespace Development
         .defaultValue("0.0")
         .units(Units::MeterPerSquareSecond);
 
-
         bind<IMC::VehicleCommand>(this);
       }
 
@@ -156,7 +125,6 @@ namespace Development
       {
         //! Initialize times.
         c_ini_time = Clock::get();
-        c_req_time = c_ini_time;
 
         //! Set time step according to the execution frequency.
         ts = 1.0/getFrequency();
@@ -164,12 +132,9 @@ namespace Development
         //! Obstacle state.
         os.lat = Math::Angles::radians(args.position[0]);
         os.lon = Math::Angles::radians(args.position[1]);
-        os.x = args.offset[0];
-        os.y = args.offset[1];        //! Should we update lat and lon with this?
-        os.psi = Math::Angles::radians(args.heading);
-        os.u = args.speed;
-        os.vx = os.u*std::cos(os.psi);
-        os.vy = os.u*std::sin(os.psi);
+        os.cog = Math::Angles::radians(args.heading);
+        os.sog = args.speed;
+        os.label = "ObstacleState";
 
         //! Set origin of the maneuver
         man_goto.lat = Math::Angles::radians(args.position[0]);
@@ -230,6 +195,7 @@ namespace Development
       {
       }
 
+      //! Show reply from supervisor.
       void consume(const IMC::VehicleCommand* reply_msg){
         if (!(reply_msg->request_id == m_command.request_id) || !(reply_msg->command == m_command.command)){
           inf("Request ids and/or commands do not match. Returning. ");
@@ -238,78 +204,68 @@ namespace Development
 
         if (reply_msg->type == IMC::VehicleCommand::VC_SUCCESS){
           inf("Received message: %s", reply_msg->info.c_str());
-          m_executing = true;
           return;
         }
 
         if (reply_msg->type == IMC::VehicleCommand::VC_FAILURE){
           inf("Received message: %s", reply_msg->info.c_str());
-          m_executing = false;
           return;
         }
       }
 
-      //! Updates the position and velocity of the obstacle.
+      //! Sends the state of the obstacle.
 
-      void updatePosVel(double headingRate, double acceleration){
-
+      void
+      sendState(void){
+        //! Speed and acceleration. To be updated.
+        double r = 0.0;
+        double a = 0.0;
         //! Unicycle kinematics.
-        os.x += os.u*std::cos(os.psi)*ts;
-        os.y += os.u*std::sin(os.psi)*ts;
-        os.psi += std::max(std::min(headingRate,args.r_max), -args.r_max)*ts;
-        double u = os.u+std::max(std::min(acceleration,args.a_max), -args.a_max)*ts;
-
-        //! Ensure that speed is between 0 and max.
-        os.u = std::max(std::min(u, args.u_max), 0.0);
-
-        //! Update ground velocity.
-        os.vx = os.u*std::cos(os.psi);
-        os.vy = os.u*std::sin(os.psi);
-
+        double  n = os.sog*std::cos(os.cog)*ts;
+        double e = os.sog*std::sin(os.cog)*ts;
         //! Update longitudal and latidual coordinates.
-        WGS84::displace(os.x, os.y,  &os.lat, &os.lon);
+        WGS84::displace(n, e,  &os.lat, &os.lon);
+
+        os.cog += std::max(std::min(r,args.r_max), -args.r_max)*ts;
+        double u = os.sog+std::max(std::min(a,args.a_max), -args.a_max)*ts;
+        //! Ensure that speed is between 0 and max.
+        os.sog = std::max(std::min(u, args.u_max), 0.0);
+
+        dispatch(os);
       }
 
       //! Proportional heading controller.
 
       double headingController(double desiredHeading, double gain){
-        return -gain*Angles::normalizeRadian(os.psi-desiredHeading);
+        return -gain*Angles::normalizeRadian(os.cog-desiredHeading);
       }
 
       //! Proportional speed controller.
 
       double speedController(double desiredSpeed, double gain){
-        return  -gain*(os.u-desiredSpeed);
+        return  -gain*(os.sog-desiredSpeed);
       }
 
-      //! Main loop.
-      //! Sends a vehicle command approximately every 10 seconds until the
-      //! maneuver is executed. We wait 10 seconds before sending the first
-      //! message to ensure that the vehicle has time to initialize.
+      bool hasInit(void){
+        double c_time = Clock::get();
+        return c_time - c_ini_time > c_init_timeout;
+      }
 
       void
       task(void)
       {
-        double c_time = Clock::get();
+        //! Request a maneuver after the vehicle has initialized. Now we wait 15
+        //! seconds to send, but could we wait for a control state update. To be
+        //! implemented
 
-        bool m_initialized = c_time - c_ini_time > c_req_timeout;
-
-        if (!m_waiting_response && m_initialized){
-          m_waiting_response = true;
-          c_req_time = c_time;
-
+        if (hasInit() && !m_req_sent){
           dispatch(m_command);
           inf("Requested maneuver 'Goto (%f, %f)'. ", Math::Angles::degrees(man_goto.lat), Math::Angles::degrees(man_goto.lon));
+          m_req_sent = true;
         }
 
-        bool m_timed_out = c_time - c_req_time > c_req_timeout;
-
-        if (m_initialized && !m_executing && m_timed_out){
-            inf("Request timed out. ");
-            m_waiting_response = false;
-        }
-
-
+        //! Send obstacle state regularly
+        sendState();
       }
     };
   }
