@@ -24,20 +24,23 @@
 // https://github.com/LSTS/dune/blob/master/LICENCE.md and                  *
 // http://ec.europa.eu/idabc/eupl.html.                                     *
 //***************************************************************************
-// Author: Eduardo Marques                                                  *
+// Author: Aurorahar                                                        *
 //***************************************************************************
-
-// ISO C++ 98 headers.
-#include <cmath>
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
 namespace Control
 {
+  //! Insert short task description here.
+  //!
+  //! Insert explanation on task behaviour here.
+  //! @author Aurorahar
+  //! Original pure pustuit controller code by Eduardo Marques
+
   namespace Path
   {
-    namespace PurePursuit
+    namespace COLAV_PurePursuit
     {
       using DUNE_NAMESPACES;
 
@@ -47,44 +50,44 @@ namespace Control
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx)
-        { }
+        {
+          //! Here we should bind an obstacle state message
+        }
 
         void
         onUpdateParameters(void)
         {
           PathController::onUpdateParameters();
         }
-
         void
         onEntityReservation(void)
         {
           PathController::onEntityReservation();
         }
-
         void
         onPathActivation(void)
         {
-          // Activate heading controller.
           enableControlLoops(IMC::CL_YAW);
         }
-
         void
         onPathDeactivation(void)
         {
-          // Deactivate heading controller.
           disableControlLoops(IMC::CL_YAW);
         }
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
-          // Head straight to target
+          //! Pure pursuit heading
           m_heading.value = ts.los_angle;
 
           if (ts.cc)
             m_heading.value = Angles::normalizeRadian(m_heading.value + state.psi - ts.course);
-            dispatch(m_heading);
+
+          dispatch(m_heading);
         }
+
+
       };
     }
   }

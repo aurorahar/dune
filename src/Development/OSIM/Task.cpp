@@ -154,8 +154,10 @@ namespace Development
       void
       onUpdateParameters(void)
       {
+        //! Initialize times.
         c_ini_time = Clock::get();
         c_req_time = c_ini_time;
+
         //! Set time step according to the execution frequency.
         ts = 1.0/getFrequency();
 
@@ -163,15 +165,14 @@ namespace Development
         os.lat = Math::Angles::radians(args.position[0]);
         os.lon = Math::Angles::radians(args.position[1]);
         os.x = args.offset[0];
-        os.y = args.offset[1];
-        //! Should we update lat and lon after this? check
+        os.y = args.offset[1];        //! Should we update lat and lon with this?
         os.psi = Math::Angles::radians(args.heading);
         os.u = args.speed;
         os.vx = os.u*std::cos(os.psi);
         os.vy = os.u*std::sin(os.psi);
 
         //! Set origin of the maneuver
-        man_goto.lat =Math::Angles::radians(args.position[0]);
+        man_goto.lat = Math::Angles::radians(args.position[0]);
         man_goto.lon = Math::Angles::radians(args.position[1]);
         man_goto.z = 0.0;
         man_goto.z_units = IMC::Z_ALTITUDE;
@@ -179,7 +180,7 @@ namespace Development
         //! Set the desired position in North and East directions.
         //! This is chosen arbitrary just to test the path controller.
 
-        WGS84::displace(-30, 30,  &man_goto.lat, &man_goto.lon);
+        WGS84::displace(-50, 30,  &man_goto.lat, &man_goto.lon);
         man_goto.speed = 1.5;
         man_goto.speed_units = IMC::SUNITS_METERS_PS;
 
@@ -194,7 +195,8 @@ namespace Development
         m_command.request_id = ID;
 
         //! Note that, if external control is enabled, maneuvers can be transmitted directly to the vehicle,
-        //! and we do not have request it by sending a command as we do here.
+        //! and we do not have request it by sending a command as we do here. However, the maneuver will not
+        //! be  stopped when the goal is reached.
       }
 
       //! Reserve entity identifiers.
@@ -229,7 +231,7 @@ namespace Development
       }
 
       void consume(const IMC::VehicleCommand* reply_msg){
-        if ( !(reply_msg->request_id == m_command.request_id) && !(reply_msg->command == m_command.command) ) {
+        if (!(reply_msg->request_id == m_command.request_id) && !(reply_msg->command == m_command.command)){
           inf("Request ids and/or commands do not match. Returning. ");
           return;
         }
@@ -257,7 +259,7 @@ namespace Development
         os.psi += std::max(std::min(headingRate,args.r_max), -args.r_max)*ts;
         double u = os.u+std::max(std::min(acceleration,args.a_max), -args.a_max)*ts;
 
-        //! Ensure that speed is between 0 and umax.
+        //! Ensure that speed is between 0 and max.
         os.u = std::max(std::min(u, args.u_max), 0.0);
 
         //! Update ground velocity.
@@ -270,33 +272,31 @@ namespace Development
 
       //! Proportional heading controller.
 
-      double headingController(double desiredHeading){
-        return Angles::normalizeRadian(- os.psi + desiredHeading);
+      double headingController(double desiredHeading, double gain){
+        return -gain*Angles::normalizeRadian(os.psi-desiredHeading);
       }
 
       //! Proportional speed controller.
 
-      double speedController(double desiredSpeed){
-        return - os.u + desiredSpeed;
+      double speedController(double desiredSpeed, double gain){
+        return  -gain*(os.u-desiredSpeed);
       }
 
-
-
-
-
       //! Main loop.
+      //! Sends a vehicle command approximately every 10 seconds until the
+      //! maneuver is executed. We wait 10 seconds before sending the first
+      //! message to ensure that the vehicle has time to initialize.
+
       void
       task(void)
       {
         double c_time = Clock::get();
 
         bool m_initialized = c_time - c_ini_time > c_req_timeout;
-        
 
         if (!m_waiting_response && m_initialized){
           m_waiting_response = true;
           c_req_time = c_time;
-
 
           dispatch(m_command);
           inf("Requested maneuver 'Goto (%f, %f)'. ", Math::Angles::degrees(man_goto.lat), Math::Angles::degrees(man_goto.lon));
@@ -304,13 +304,12 @@ namespace Development
 
         bool m_timed_out = c_time - c_req_time > c_req_timeout;
 
-    
         if (m_initialized && !m_executing && m_timed_out){
             inf("Request timed out. ");
             m_waiting_response = false;
         }
 
-        
+
       }
     };
   }
