@@ -8947,6 +8947,186 @@ namespace DUNE
       IMC::toJSON(os__, "alt", alt, nindent__);
     }
 
+    //! Obstacle State starts here
+
+    ObstacleState::ObstacleState(void)
+    {
+      m_header.mgid = 359;
+      clear();
+    }
+
+    void
+    ObstacleState::clear(void)
+    {
+      lat = 0;
+      lon = 0;
+      height = 0;
+      x = 0;
+      y = 0;
+      z = 0;
+      phi = 0;
+      theta = 0;
+      psi = 0;
+      u = 0;
+      v = 0;
+      w = 0;
+      vx = 0;
+      vy = 0;
+      vz = 0;
+      p = 0;
+      q = 0;
+      r = 0;
+      depth = 0;
+      alt = 0;
+    }
+
+    bool
+    ObstacleState::fieldsEqual(const Message& msg__) const
+    {
+      const IMC::ObstacleState& other__ = static_cast<const ObstacleState&>(msg__);
+      if (lat != other__.lat) return false;
+      if (lon != other__.lon) return false;
+      if (height != other__.height) return false;
+      if (x != other__.x) return false;
+      if (y != other__.y) return false;
+      if (z != other__.z) return false;
+      if (phi != other__.phi) return false;
+      if (theta != other__.theta) return false;
+      if (psi != other__.psi) return false;
+      if (u != other__.u) return false;
+      if (v != other__.v) return false;
+      if (w != other__.w) return false;
+      if (vx != other__.vx) return false;
+      if (vy != other__.vy) return false;
+      if (vz != other__.vz) return false;
+      if (p != other__.p) return false;
+      if (q != other__.q) return false;
+      if (r != other__.r) return false;
+      if (depth != other__.depth) return false;
+      if (alt != other__.alt) return false;
+      return true;
+    }
+
+    int
+    ObstacleState::validate(void) const
+    {
+      if (lat < -1.5707963267948966 || lat > 1.5707963267948966) return false;
+      if (lon < -3.141592653589793 || lon > 3.141592653589793) return false;
+      if (phi < -3.141592653589793 || phi > 3.141592653589793) return false;
+      if (theta < -1.57079632679490 || theta > 1.57079632679490) return false;
+      if (psi < -3.141592653589793 || psi > 3.141592653589793) return false;
+      if (p < -3.141592653589793 || p > 3.141592653589793) return false;
+      if (q < -3.141592653589793 || q > 3.141592653589793) return false;
+      if (r < -3.141592653589793 || r > 3.141592653589793) return false;
+      return true;
+    }
+
+    uint8_t*
+    ObstacleState::serializeFields(uint8_t* bfr__) const
+    {
+      uint8_t* ptr__ = bfr__;
+      ptr__ += IMC::serialize(lat, ptr__);
+      ptr__ += IMC::serialize(lon, ptr__);
+      ptr__ += IMC::serialize(height, ptr__);
+      ptr__ += IMC::serialize(x, ptr__);
+      ptr__ += IMC::serialize(y, ptr__);
+      ptr__ += IMC::serialize(z, ptr__);
+      ptr__ += IMC::serialize(phi, ptr__);
+      ptr__ += IMC::serialize(theta, ptr__);
+      ptr__ += IMC::serialize(psi, ptr__);
+      ptr__ += IMC::serialize(u, ptr__);
+      ptr__ += IMC::serialize(v, ptr__);
+      ptr__ += IMC::serialize(w, ptr__);
+      ptr__ += IMC::serialize(vx, ptr__);
+      ptr__ += IMC::serialize(vy, ptr__);
+      ptr__ += IMC::serialize(vz, ptr__);
+      ptr__ += IMC::serialize(p, ptr__);
+      ptr__ += IMC::serialize(q, ptr__);
+      ptr__ += IMC::serialize(r, ptr__);
+      ptr__ += IMC::serialize(depth, ptr__);
+      ptr__ += IMC::serialize(alt, ptr__);
+      return ptr__;
+    }
+
+    uint16_t
+    ObstacleState::deserializeFields(const uint8_t* bfr__, uint16_t size__)
+    {
+      const uint8_t* start__ = bfr__;
+      bfr__ += IMC::deserialize(lat, bfr__, size__);
+      bfr__ += IMC::deserialize(lon, bfr__, size__);
+      bfr__ += IMC::deserialize(height, bfr__, size__);
+      bfr__ += IMC::deserialize(x, bfr__, size__);
+      bfr__ += IMC::deserialize(y, bfr__, size__);
+      bfr__ += IMC::deserialize(z, bfr__, size__);
+      bfr__ += IMC::deserialize(phi, bfr__, size__);
+      bfr__ += IMC::deserialize(theta, bfr__, size__);
+      bfr__ += IMC::deserialize(psi, bfr__, size__);
+      bfr__ += IMC::deserialize(u, bfr__, size__);
+      bfr__ += IMC::deserialize(v, bfr__, size__);
+      bfr__ += IMC::deserialize(w, bfr__, size__);
+      bfr__ += IMC::deserialize(vx, bfr__, size__);
+      bfr__ += IMC::deserialize(vy, bfr__, size__);
+      bfr__ += IMC::deserialize(vz, bfr__, size__);
+      bfr__ += IMC::deserialize(p, bfr__, size__);
+      bfr__ += IMC::deserialize(q, bfr__, size__);
+      bfr__ += IMC::deserialize(r, bfr__, size__);
+      bfr__ += IMC::deserialize(depth, bfr__, size__);
+      bfr__ += IMC::deserialize(alt, bfr__, size__);
+      return bfr__ - start__;
+    }
+
+    uint16_t
+    ObstacleState::reverseDeserializeFields(const uint8_t* bfr__, uint16_t size__)
+    {
+      const uint8_t* start__ = bfr__;
+      bfr__ += IMC::reverseDeserialize(lat, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(lon, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(height, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(x, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(y, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(z, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(phi, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(theta, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(psi, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(u, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(v, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(w, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(vx, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(vy, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(vz, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(p, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(q, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(r, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(depth, bfr__, size__);
+      bfr__ += IMC::reverseDeserialize(alt, bfr__, size__);
+      return bfr__ - start__;
+    }
+
+    void
+    ObstacleState::fieldsToJSON(std::ostream& os__, unsigned nindent__) const
+    {
+      IMC::toJSON(os__, "lat", lat, nindent__);
+      IMC::toJSON(os__, "lon", lon, nindent__);
+      IMC::toJSON(os__, "height", height, nindent__);
+      IMC::toJSON(os__, "x", x, nindent__);
+      IMC::toJSON(os__, "y", y, nindent__);
+      IMC::toJSON(os__, "z", z, nindent__);
+      IMC::toJSON(os__, "phi", phi, nindent__);
+      IMC::toJSON(os__, "theta", theta, nindent__);
+      IMC::toJSON(os__, "psi", psi, nindent__);
+      IMC::toJSON(os__, "u", u, nindent__);
+      IMC::toJSON(os__, "v", v, nindent__);
+      IMC::toJSON(os__, "w", w, nindent__);
+      IMC::toJSON(os__, "vx", vx, nindent__);
+      IMC::toJSON(os__, "vy", vy, nindent__);
+      IMC::toJSON(os__, "vz", vz, nindent__);
+      IMC::toJSON(os__, "p", p, nindent__);
+      IMC::toJSON(os__, "q", q, nindent__);
+      IMC::toJSON(os__, "r", r, nindent__);
+      IMC::toJSON(os__, "depth", depth, nindent__);
+      IMC::toJSON(os__, "alt", alt, nindent__);
+    }
+
     ExternalNavData::ExternalNavData(void)
     {
       m_header.mgid = 294;

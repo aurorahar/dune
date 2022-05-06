@@ -36,7 +36,7 @@ namespace Control
   //!
   //! Insert explanation on task behaviour here.
   //! @author Aurorahar
-  //! Original pure pustuit controller code by Eduardo Marques
+  //! Original pure pursuit controller by Eduardo Marques
 
   namespace Path
   {
