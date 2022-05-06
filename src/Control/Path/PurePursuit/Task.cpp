@@ -83,7 +83,8 @@ namespace Control
 
           if (ts.cc)
             m_heading.value = Angles::normalizeRadian(m_heading.value + state.psi - ts.course);
-            dispatch(m_heading);
+            
+          dispatch(m_heading);
         }
       };
     }

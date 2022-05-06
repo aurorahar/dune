@@ -51,7 +51,7 @@ namespace Control
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx)
         {
-          //! Here we should bind an obstacle state message
+          //!bind<IMC::ObstacleState>(this);
         }
 
         void
@@ -74,6 +74,10 @@ namespace Control
         {
           disableControlLoops(IMC::CL_YAW);
         }
+
+      //!  void consume(const IMC::ObstacleState* os){
+      //!    inf("Received obstacle state.");
+      //!  }
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
