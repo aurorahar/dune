@@ -77,10 +77,10 @@ namespace Control
           m_in_colreg(false),
           m_ca_active(false)
         {
-          param("Separation Distance", args.dsafe)
+          param("Separation Distance", args.dsep)
           .defaultValue("10.0")
           .units(Units::Meter);
-          param("Safety Distance", args.dsep)
+          param("Safety Distance", args.dsafe)
           .defaultValue("20.0")
           .units(Units::Meter);
           param("Safety Angle", args.asafe)
