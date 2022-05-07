@@ -46,6 +46,7 @@ namespace Development
 
     struct Arguments{
       std::vector<double> position;
+      std::vector<double> offset;
       double heading;
       double speed;
       double r_max;
@@ -86,10 +87,15 @@ namespace Development
         DUNE::Tasks::Periodic(name, ctx),
         m_req_sent(false)
       {
-        param("Initial Position", args.position)
-        .description("Initial position of the obstacle.")
+        param("Position", args.position)
+        .description("Position of the reference origin. ")
         .size(2)
         .units(Units::Degree);
+
+        param("Offset", args.offset)
+        .description("Offset of the obstacle position relative to the origin.")
+        .size(2)
+        .units(Units::Meter);
 
         param("Heading", args.heading)
         .description("Initial orientation of the obstacle.")
@@ -104,7 +110,7 @@ namespace Development
          param("Maximum Heading Rate", args.r_max)
         .description("Maximum obstacle heading rate.")
         .defaultValue("0.0")
-        .units(Units::RadianPerSecond); // should be radianspersec
+        .units(Units::RadianPerSecond);
 
         param("Maximum Speed", args.u_max)
         .description("Maximum obstacle speed.")
@@ -132,6 +138,7 @@ namespace Development
         //! Obstacle state.
         os.lat = Math::Angles::radians(args.position[0]);
         os.lon = Math::Angles::radians(args.position[1]);
+        WGS84::displace(args.offset[0], args.offset[1],  &os.lat, &os.lon);
         os.cog = Math::Angles::radians(args.heading);
         os.sog = args.speed;
         os.label = "ObstacleState";
@@ -221,8 +228,9 @@ namespace Development
         double r = 0.0;
         double a = 0.0;
         //! Unicycle kinematics.
-        double  n = os.sog*std::cos(os.cog)*ts;
+        double n = os.sog*std::cos(os.cog)*ts;
         double e = os.sog*std::sin(os.cog)*ts;
+
         //! Update longitudal and latidual coordinates.
         WGS84::displace(n, e,  &os.lat, &os.lon);
 
@@ -236,13 +244,13 @@ namespace Development
 
       //! Proportional heading controller.
 
-      double headingController(double desiredHeading, double gain){
-        return -gain*Angles::normalizeRadian(os.cog-desiredHeading);
+      double headingController(const double desiredHeading, const double gain){
+        return gain*Angles::minSignedAngle(os.cog, desiredHeading);
       }
 
       //! Proportional speed controller.
 
-      double speedController(double desiredSpeed, double gain){
+      double speedController(const double desiredSpeed, const double gain){
         return  -gain*(os.sog-desiredSpeed);
       }
 

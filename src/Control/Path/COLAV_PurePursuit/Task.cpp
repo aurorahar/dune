@@ -29,6 +29,7 @@
 
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
+//#include <cmath>
 
 namespace Control
 {
@@ -44,17 +45,25 @@ namespace Control
     {
       using DUNE_NAMESPACES;
 
+      struct Arguments{
+        double dsep;
+        double dsafe;
+        double asafe;
+      };
+
       struct Task: public DUNE::Control::PathController
       {
-        IMC::DesiredHeading m_heading;
 
+        Arguments args;
+        IMC::DesiredHeading m_heading;
 
         //! Collision Avoidance
         double coll_cone[2];
-        double dsep;
         bool m_in_colreg;
-        bool m_in_ca;
+        bool m_ca_active;
         int m_turn_dir;
+
+
         //! Obstacle State
         double opos[2];
         double opsi;
@@ -66,11 +75,17 @@ namespace Control
           DUNE::Control::PathController(name, ctx),
           m_os_received(false),
           m_in_colreg(false),
-          m_in_ca(false)
+          m_ca_active(false)
         {
-          param("Separation Distance", dsep)
+          param("Separation Distance", args.dsafe)
           .defaultValue("10.0")
           .units(Units::Meter);
+          param("Safety Distance", args.dsep)
+          .defaultValue("20.0")
+          .units(Units::Meter);
+          param("Safety Angle", args.asafe)
+          .defaultValue("10.0")
+          .units(Units::Degree);
 
           bind<IMC::Target>(this);
         }
@@ -78,6 +93,7 @@ namespace Control
         void
         onUpdateParameters(void)
         {
+          args.asafe = Angles::radians(args.asafe);
           PathController::onUpdateParameters();
         }
         void
@@ -107,22 +123,20 @@ namespace Control
           m_os_received = true;
         }
 
-        void shouldCA(const IMC::EstimatedState& vs, double course){
+        void shouldCA(const IMC::EstimatedState& vs, const double course){
 
           double d, alpha, beta;
           Coordinates::WGS84::getNEBearingAndRange(vs.lat, vs.lon, opos[0], opos[1], & alpha, & d);
 
-          m_in_colreg = d < dsep;
+          m_in_colreg = d < args.dsep;
 
-          //! Should not happen but if we are inside the collision region
-          //! this heading will bring the vehicle out of the reguib and we
-          //! avoid error when calling asin.
+          //! Should not happen but if we are inside the collision region.
 
           if( m_in_colreg ){
             debug("Distance to obstacle is %f [m] -- Inside collision region", d);
-            beta = c_pi - std::asin(d/dsep);
+            beta = c_pi - std::asin(d/args.dsep);
           } else {
-            beta = std::asin(dsep/d);
+            beta = std::asin(args.dsep/d);
           }
 
           double u = vs.u;
@@ -136,47 +150,62 @@ namespace Control
             return;
           }
 
-          coll_cone[0] = alpha - beta + std::asin(ou/speed * std::sin(c_pi - opsi + alpha - beta));
-          coll_cone[1] = alpha + beta  + std::asin(ou/speed * std::sin(c_pi - opsi + alpha + beta));
+          //! Compute cone angles modulated between 0 and 2pi.
 
-          // Here we need to check if CA is necessary
-          //! then we set turning dir iff we are startng CA
+          coll_cone[0] = alpha - beta - args.asafe + std::asin(ou/speed * std::sin(c_pi - opsi + alpha - beta - args.asafe) ) ;
+          coll_cone[1] = alpha + beta + args.asafe + std::asin(ou/speed * std::sin(c_pi - opsi + alpha + beta + args.asafe) ) ;
 
-          if (!m_in_ca){
-            m_turn_dir = Angles::normalizeRadian(course-coll_cone[0]) <= Angles::normalizeRadian(course - coll_cone[1]) ? 0 : 1;
+          //! Collision avoidance algorithm.
+          //! We check if the vehicle is already avoiding collision or if the
+          //! distance to the obstacle has been reduced to less than the safety
+          //! distance. If so, we check if the current course is in the interior
+          //! of the collision cone to activate collision avoidance control.
+          //! If we are not in an ongoing evasive maneuver, but are initiating
+          //! one, we choose the turning direction.
+
+          if ( d <= args.dsafe || m_ca_active ){
+
+            double direction_rot = fmod(course - coll_cone[0] , 2.0*c_pi);
+            double cone_rot = fmod(coll_cone[1] - coll_cone[0] , 2.0*c_pi);
+
+            if ( direction_rot < cone_rot ) {
+
+              if ( !m_ca_active )
+                m_turn_dir = std::abs(Angles::minSignedAngle(course,coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,coll_cone[1])) ? 0 : 1;
+              m_ca_active = true;
+            }
+            else{
+              m_ca_active = false;
+            }
           }
-          m_in_ca = true;
         }
-
 
         void
         step(const IMC::EstimatedState& state, const TrackingState& ts)
         {
 
-          if (!m_os_received){
+          if (!m_os_received)
             m_heading.value = ts.los_angle;
-          }
           else
           {
-            // assuming course control here.
+            //! If we have received measuements of the obstacle, check if we
+            //! need collision avoidance.
+
             shouldCA(state, ts.course);
 
-            if (m_in_ca)
+            if ( m_ca_active )
               m_heading.value = coll_cone[m_turn_dir];
             else
               m_heading.value = ts.los_angle;
           }
 
-          if (ts.cc)
+          if ( ts.cc )
             m_heading.value = Angles::normalizeRadian(m_heading.value + state.psi - ts.course);
 
           dispatch(m_heading);
-}
-
-
+        }
 // TODO
 // Implement a timeout for received obstacle measurements?
-
       };
     }
   }
