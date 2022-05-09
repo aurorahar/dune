@@ -30,16 +30,13 @@
 // DUNE headers.
 #include <DUNE/DUNE.hpp>
 
-namespace Development
+namespace Simulators
 {
-  //! Obstacle simulator.
+  //! Insert short task description here.
   //!
-  //! Task to simulate a moving obstacle and transmit the position and
-  //! velocity to the vehicle. Collision avoidance implemented in the path
-  //! controller.
-  //!
-  //! ***Currently testing sending maneuvers to the vehicle from this task**
+  //! Insert explanation on task behaviour here.
   //! @author Aurorahar
+
   namespace OSIM
   {
     using DUNE_NAMESPACES;
@@ -54,40 +51,20 @@ namespace Development
       double u_max;
     };
 
-
     struct Task: public DUNE::Tasks::Periodic
     {
        //! Arguments.
       Arguments m_args;
-
       //! Obstacle state to be sent.
       IMC::Target m_os;
-
-      //! Maneuver to be requested.
-      IMC::Goto m_goto;
-      InlineMessage<Maneuver> m_man;
-
-      //! Command to be sent to the vehicle.
-      IMC::VehicleCommand m_command;
-      static const uint16_t c_id = 100;
-
-      //! Time interval for numerical integration.
+      //! Step size of numerical integration.
       double c_ts;
-
-      //
-      bool m_req_sent;
-      bool m_calib_done;
-      bool m_speed_ok;
-
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx),
-        m_req_sent(false),
-        m_calib_done(false),
-        m_speed_ok(false)
+        DUNE::Tasks::Periodic(name, ctx)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
@@ -123,10 +100,6 @@ namespace Development
         .description("Maximum obstacle acceleration.")
         .defaultValue("0.0")
         .units(Units::MeterPerSquareSecond);
-
-        bind<IMC::VehicleCommand>(this);
-        bind<IMC::VehicleState>(this);
-        //bind<IMC::EstimatedState>(this);
       }
 
       //! Update internal state with new parameter values.
@@ -136,40 +109,13 @@ namespace Development
         //! Set time step according to the execution frequency.
         c_ts = 1.0/getFrequency();
 
-        //! Obstacle state.
+        //! Initialize obstacle states.
         m_os.lat = Math::Angles::radians(m_args.position[0]);
         m_os.lon = Math::Angles::radians(m_args.position[1]);
         WGS84::displace(m_args.offset[0], m_args.offset[1],  &m_os.lat, &m_os.lon);
         m_os.cog = Math::Angles::radians(m_args.heading);
         m_os.sog = m_args.speed;
         m_os.label = "ObstacleState";
-
-        //! Set origin of the maneuver
-        m_goto.lat = Math::Angles::radians(m_args.position[0]);
-        m_goto.lon = Math::Angles::radians(m_args.position[1]);
-        m_goto.z = 0.0;
-        m_goto.z_units = IMC::Z_ALTITUDE;
-
-        //! Set the desired position in North and East directions.
-        //! This is chosen arbitrary just to test the path controller.
-
-        WGS84::displace(-60.0, 40.0,  &m_goto.lat, &m_goto.lon);
-        m_goto.speed = 1.5;
-        m_goto.speed_units = IMC::SUNITS_METERS_PS;
-
-        //! Inline message.
-        m_man.set(&m_goto);
-
-        //! Set the command attributes, these are necessary for the command to be accepted.
-        //! We request execution of a maneuver.
-        m_command.maneuver = m_man;
-        m_command.type = IMC::VehicleCommand::VC_REQUEST;
-        m_command.command = IMC::VehicleCommand::VC_EXEC_MANEUVER;
-        m_command.request_id = c_id;
-
-        //! Note that, if external control is enabled, maneuvers can be transmitted directly to the vehicle,
-        //! and we do not have request it by sending a command as we do here. However, the maneuver will not
-        //! be  stopped when the goal is reached.
       }
 
       //! Reserve entity identifiers.
@@ -203,40 +149,16 @@ namespace Development
       {
       }
 
-    //!  void consume(const IMC::EstimatedState * es){
-    //!    m_speed_ok = es->u > m_args.u_max ? true : false;
-    //!  }
-
-      void consume(const IMC::VehicleState * vs){
-        if (vs->op_mode == IMC::VehicleState::VS_SERVICE)
-          m_calib_done = true;
-      }
-
-      //! Show reply from supervisor.
-      void consume(const IMC::VehicleCommand* reply_msg){
-        if (!(reply_msg->request_id == m_command.request_id) || !(reply_msg->command == m_command.command)){
-          inf("Request ids and/or commands do not match. Returning. ");
-          return;
-        }
-
-        if (reply_msg->type == IMC::VehicleCommand::VC_SUCCESS){
-          inf("Received message: %s", reply_msg->info.c_str());
-          return;
-        }
-
-        if (reply_msg->type == IMC::VehicleCommand::VC_FAILURE){
-          inf("Received message: %s", reply_msg->info.c_str());
-          return;
-        }
-      }
-
       //! Sends the state of the obstacle.
 
       void
       sendState(void){
-        //! Speed and acceleration. To be updated.
+
+        //! Speed and acceleration of the obstacle. To be updated.
+        //! Now making the obstacle move in a circle with constant speed.
         double r = 0.1;
         double a = 0.0;
+
         //! Unicycle kinematics.
         double n = m_os.sog*std::cos(m_os.cog)*c_ts;
         double e = m_os.sog*std::sin(m_os.cog)*c_ts;
@@ -246,39 +168,18 @@ namespace Development
 
         m_os.cog += std::max(std::min(r,m_args.r_max), -m_args.r_max)*c_ts;
         double u = m_os.sog+std::max(std::min(a,m_args.a_max), -m_args.a_max)*c_ts;
-        //! Ensure that speed is between 0 and max.
+
+        //! Ensure that speed is between 0 and max and course between -pi and pi
         m_os.sog = std::max(std::min(u, m_args.u_max), 0.0);
-        m_os.cog = fmod(m_os.cog, 2*c_pi);
+        m_os.cog = Angles::normalizeRadian(m_os.cog);
 
         dispatch(m_os);
-      }
-
-      //! Proportional heading controller.
-
-      double headingController(const double desiredHeading, const double gain){
-        return gain*Angles::minSignedAngle(m_os.cog, desiredHeading);
-      }
-
-      //! Proportional speed controller.
-
-      double speedController(const double desiredSpeed, const double gain){
-        return  -gain*(m_os.sog-desiredSpeed);
       }
 
       void
       task(void)
       {
-        //! Request a maneuver after the vehicle has initialized. We wait until
-        //! the vehicle is in service mode. Then we send the obtacle state once
-        //! the speed of the vehicle is higher than the obstacle maximum speed
-
-        if (m_calib_done && !m_req_sent){
-          dispatch(m_command);
-          inf("Requested maneuver 'Goto (%f, %f)'. ", Math::Angles::degrees(m_goto.lat), Math::Angles::degrees(m_goto.lon));
-          m_req_sent = true;
-        }
-
-
+        //! Send the state of the obstacle regularly.
         sendState();
       }
     };
