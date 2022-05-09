@@ -154,7 +154,7 @@ namespace Simulators
       void
       sendState(void){
 
-        //! Speed and acceleration of the obstacle. To be updated.
+        //! Heading rate and acceleration of the obstacle. To be updated.
         //! Now making the obstacle move in a circle with constant speed.
         double r = 0.1;
         double a = 0.0;
