@@ -156,14 +156,14 @@ namespace Simulators
 
         //! Heading rate and acceleration of the obstacle. To be updated.
         //! Now making the obstacle move in a circle with constant speed.
-        double r = 0.1;
+        double r = 0.05;
         double a = 0.0;
 
         //! Unicycle kinematics.
         double n = m_os.sog*std::cos(m_os.cog)*c_ts;
         double e = m_os.sog*std::sin(m_os.cog)*c_ts;
 
-        //! Update longitudal and latidual coordinates.
+        //! Update longitude and latitude
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
 
         m_os.cog += std::max(std::min(r,m_args.r_max), -m_args.r_max)*c_ts;
@@ -181,6 +181,7 @@ namespace Simulators
       {
         //! Send the state of the obstacle regularly.
         sendState();
+
       }
     };
   }

@@ -146,7 +146,6 @@ namespace Development
       //! Show reply from supervisor.
       void consume(const IMC::VehicleCommand* reply_msg){
         if (!(reply_msg->request_id == m_command.request_id) || !(reply_msg->command == m_command.command)){
-          inf("Request ids and/or commands do not match. Returning. ");
           return;
         }
 

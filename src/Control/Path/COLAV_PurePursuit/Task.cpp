@@ -128,7 +128,7 @@ namespace Control
 
         void shouldCA(const IMC::EstimatedState & vs, double course){
 
-          //! Compute the lateral and longitudal coordinates of the vehicle.
+          //! Compute the latitudinal and longitudinal coordinates of the vehicle.
           double la = vs.lat;
           double lo = vs.lon;
           Coordinates::WGS84::displace(vs.x, vs.y, &la, &lo);
@@ -163,7 +163,7 @@ namespace Control
             //! Feasibility check
             if (m_ou > speed){
               //! Cannot compute the velocity compensation term.
-              signalError(DTR("collision cone error"));
+              debug("collision cone error");
               m_ca_active = false;
               return;
             }
@@ -223,7 +223,6 @@ namespace Control
 
           dispatch(m_heading);
         }
-
       };
     }
   }
