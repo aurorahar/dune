@@ -58,7 +58,6 @@ namespace Development
 
       bool m_req_sent;
       bool m_calib_done;
-      bool m_speed_ok;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -66,8 +65,7 @@ namespace Development
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_req_sent(false),
-        m_calib_done(false),
-        m_speed_ok(false)
+        m_calib_done(false)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
