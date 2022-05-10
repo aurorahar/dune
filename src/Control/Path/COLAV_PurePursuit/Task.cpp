@@ -90,7 +90,6 @@ namespace Control
         onUpdateParameters(void)
         {
           m_args.asafe = Angles::radians(m_args.asafe);
-
           PathController::onUpdateParameters();
         }
         void
@@ -115,7 +114,7 @@ namespace Control
           m_opos[1] = os->lon;
           m_opsi = os->cog;
           m_ou = os->sog;
-          
+
           if (!m_os_received){
             m_os_received = true;
           }
