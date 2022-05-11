@@ -63,8 +63,8 @@ namespace Simulators
       //! Step size of numerical integration.
       double c_ts;
       //! File for saving the data.
-      std::ofstream data_file;
-      bool m_in_maneuver; //! We only want to save the data from when the vehicle is in a maneuver
+      std::ofstream m_data_file;
+      bool m_in_maneuver;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -109,6 +109,7 @@ namespace Simulators
 
         param("Save Data", m_args.save_data)
         .defaultValue("false");
+
         bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
       }
@@ -160,30 +161,33 @@ namespace Simulators
       void
       onResourceRelease(void)
       {
-        if (data_file.is_open()){
+
+        if (m_data_file.is_open()){
           inf("Closing file.");
-          data_file.close();
+          m_data_file.close();
         }
       }
 
       void
       consume (const IMC::VehicleState* msg){
+
         if (msg->op_mode == IMC::VehicleState::VS_MANEUVER){
-          //! Check the maneuvering flag is already set or if we need to generate a new file.
+
+          //! Check if the maneuvering flag is set and if we need to start saving the data.
           if (!m_in_maneuver && m_args.save_data){
 
-            //! Get date and time.
+            //! Get date and time for naming the file.
             std::string timestr = Format::getTimeDate();
 
             //! Remove illegal characters, year and seconds.
             std::string name = timestr.substr(5,2)
             +timestr.substr(8,2)+ timestr.substr(11,2)+ timestr.substr(14,2);
 
-            //! Make file in the MATLAB folder.
-            data_file.open("../../MATLAB/log/"+ name +".txt");
+            //! Open the file in the designated MATLAB folder.
+            m_data_file.open("../../MATLAB/log/"+ name +".txt");
 
-            //! Check that we made the file..
-            if (!data_file)
+            //! Check that we made the file.
+            if (!m_data_file)
               inf("Cannot open file.");
             else{
               inf("Generated file %s to write.", name.c_str());
@@ -191,11 +195,12 @@ namespace Simulators
             }
           }
         }else{
-          //! Check if we need to close the file.
+
+          //! We close the file once the maneuver is over.
           if (m_in_maneuver){
-            if (data_file.is_open()){
+            if (m_data_file.is_open()){
               inf("Closing file.");
-              data_file.close();
+              m_data_file.close();
             }
             m_in_maneuver = false;
           }
@@ -204,9 +209,13 @@ namespace Simulators
 
       void
       consume(const IMC::EstimatedState * msg){
+
         if (m_in_maneuver){
-          //! Save data to file if we are in a maneuver.
-          data_file << m_nepos[0]<<"\n"<<m_nepos[1]<<"\n"<<m_os.cog << "\n"
+
+          //! Write data to file if we are in a maneuver.
+          //! We save both the obstacle and vehicle state.
+
+          m_data_file << m_nepos[0]<<"\n"<<m_nepos[1]<<"\n"<<m_os.cog << "\n"
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
           << "\n" << msg->u << "\n" << msg->v << "\n";
         }

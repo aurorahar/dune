@@ -84,7 +84,6 @@ namespace Control
           .defaultValue("10.0")
           .units(Units::Degree);
 
-
           bind<IMC::Target>(this);
         }
 
@@ -113,6 +112,7 @@ namespace Control
         }
 
         void consume(const IMC::Target * os){
+
           //! Save obstacle measurements.
           m_opos[0] = os->lat;
           m_opos[1] = os->lon;
@@ -166,7 +166,7 @@ namespace Control
 
             //! Feasibility check
             if (m_ou > speed){
-              //! Cannot compute the velocity compensation term.
+              //! Cannot compute the velocity compensation term, resuming guidance.
               debug("collision cone error");
               m_ca_active = false;
               return;
@@ -208,7 +208,7 @@ namespace Control
         step(const IMC::EstimatedState & state, const TrackingState& ts)
         {
           if (!m_os_received)
-          //! If we have not received obstacle measurements, PP guidance.
+          //! If we have not received obstacle measurements, continue with nominal guidance.
             m_heading.value = ts.los_angle;
           else
           {

@@ -58,7 +58,7 @@ namespace Development
 
       bool m_req_sent;
       bool m_calib_done;
-      
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
