@@ -58,7 +58,7 @@ namespace Development
 
       bool m_req_sent;
       bool m_calib_done;
-
+      
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
@@ -104,7 +104,6 @@ namespace Development
         m_command.type = IMC::VehicleCommand::VC_REQUEST;
         m_command.command = IMC::VehicleCommand::VC_EXEC_MANEUVER;
         m_command.request_id = c_id;
-
       }
 
       //! Reserve entity identifiers.
@@ -171,6 +170,7 @@ namespace Development
           inf("Requested maneuver 'Goto (%f, %f)'. ", Math::Angles::degrees(m_goto.lat), Math::Angles::degrees(m_goto.lon));
           m_req_sent = true;
         }
+
       }
     };
   }

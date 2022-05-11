@@ -1078,7 +1078,7 @@ namespace DUNE
 
       return std::min(65535.0, eta - time_factor);
     }
-    
+
     double
     PathController::getZ(IMC::ZUnits z_unit) const
     {
@@ -1094,7 +1094,7 @@ namespace DUNE
     }
 
     void
-    PathController::setTrackingCoord(TrackingState::Coord& coord, 
+    PathController::setTrackingCoord(TrackingState::Coord& coord,
                       double lat, double lon,
                       double z, IMC::ZUnits z_unit)
     {

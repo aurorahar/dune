@@ -8807,7 +8807,7 @@ namespace DUNE
       fieldsToJSON(std::ostream& os__, unsigned nindent__) const;
     };
 
-  
+
     //! External Navigation Data.
     class ExternalNavData: public Message
     {

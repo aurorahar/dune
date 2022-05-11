@@ -65,6 +65,7 @@ namespace Control
         double m_ou;
         bool m_os_received;
 
+
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_os_received(false),
@@ -83,6 +84,7 @@ namespace Control
           .defaultValue("10.0")
           .units(Units::Degree);
 
+
           bind<IMC::Target>(this);
         }
 
@@ -92,11 +94,13 @@ namespace Control
           m_args.asafe = Angles::radians(m_args.asafe);
           PathController::onUpdateParameters();
         }
+
         void
         onEntityReservation(void)
         {
           PathController::onEntityReservation();
         }
+
         void
         onPathActivation(void)
         {
