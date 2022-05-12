@@ -65,6 +65,9 @@ namespace Control
         double m_ou;
         bool m_os_received;
 
+        //! Obstacle Shape
+        std::vector<double> m_vertices = {-10, 5, 10, 5, 10, -5, -10, -5};
+        int m_n_vertices = m_vertices.size()/2;
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
@@ -124,13 +127,23 @@ namespace Control
           }
         }
 
+        void updateVertices(double dx, double dy){
+          for (int i = 0; i < m_n_vertices; i++){
+            m_vertices[2*i] += dx;
+            m_vertices[2*i+1] += dy;
+          }
+        }
+
+
         //! Returns the angle modulated between 0 and 2pi.
-        double mapAngle(double angle){
+        double
+        mapAngle(double angle){
           return angle - 2.0*c_pi * std::floor(angle/(2.0*c_pi));
         }
 
 
-        void shouldCA(const IMC::EstimatedState & vs, double course){
+        void
+        shouldCA(const IMC::EstimatedState & vs, double course){
 
           //! Compute the latitudinal and longitudinal coordinates of the vehicle.
           double la = vs.lat;

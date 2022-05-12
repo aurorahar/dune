@@ -66,11 +66,15 @@ namespace Simulators
       std::ofstream m_data_file;
       bool m_in_maneuver;
 
+      //! Tracking the vehicle
+      bool m_estimate_received;
+      double m_vnepos[2];
+
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx),m_in_maneuver(false)
+        DUNE::Tasks::Periodic(name, ctx),m_in_maneuver(false), m_estimate_received(false)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
@@ -184,15 +188,15 @@ namespace Simulators
             +timestr.substr(8,2)+ timestr.substr(11,2)+ timestr.substr(14,2);
 
             //! Open the file in the designated MATLAB folder.
-            m_data_file.open("../../MATLAB/log/"+ name +".txt");
+            m_data_file.open("../../MATLAB/DUNE_Experiments/log/"+ name +".txt");
 
             //! Check that we made the file.
             if (!m_data_file)
               inf("Cannot open file.");
             else{
               inf("Generated file %s to write.", name.c_str());
-              m_in_maneuver = true;
             }
+            m_in_maneuver = true;
           }
         }else{
 
@@ -210,33 +214,44 @@ namespace Simulators
       void
       consume(const IMC::EstimatedState * msg){
 
-        if (m_in_maneuver){
+        if (m_in_maneuver && m_data_file.is_open()){
 
           //! Write data to file if we are in a maneuver.
           //! We save both the obstacle and vehicle state.
 
           m_data_file << m_nepos[0]<<"\n"<<m_nepos[1]<<"\n"<<m_os.cog << "\n"
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
-          << "\n" << msg->u << "\n" << msg->v << "\n";
+          << "\n" << msg->u << "\n" << msg->v << "\n" << msg->r << "\n";
         }
-      }
+        
+        if (!m_estimate_received)
+          m_estimate_received = true;
 
+        m_vnepos[0] = msg->x;
+        m_vnepos[1] = msg->y;
+      }
 
       //! Sends the state of the obstacle.
 
       void
       sendState(void){
 
-        //! Heading rate and acceleration of the obstacle. To be updated.
-        //! Now making the obstacle move in a circle with constant speed.
-        double r = 0.05;
-        double a = 0.0;
-
         //! Unicycle kinematics.
         double n = m_os.sog*std::cos(m_os.cog)*c_ts;
         double e = m_os.sog*std::sin(m_os.cog)*c_ts;
         m_nepos[0] += n;
         m_nepos[1] += e;
+
+        //! Heading rate and acceleration of the obstacle.
+        //! Now making the obstacle track the vehicle.
+
+        double a = m_args.a_max;
+        double r = 0.0;
+
+        if (m_estimate_received){
+          double los = std::atan2(m_vnepos[1]-m_nepos[1],m_vnepos[0]-m_nepos[0]);
+          r = Angles::minSignedAngle(m_os.cog, los);
+        }
 
         //! Update longitude and latitude
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
@@ -255,7 +270,9 @@ namespace Simulators
       task(void)
       {
         //! Send the state of the obstacle regularly.
-        sendState();
+        if (m_in_maneuver){
+            sendState();
+        }
       }
     };
   }
