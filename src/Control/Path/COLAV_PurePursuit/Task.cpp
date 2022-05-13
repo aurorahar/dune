@@ -66,13 +66,18 @@ namespace Control
         bool m_os_received;
 
         //! Obstacle Shape
-        std::vector<double> m_vertices = {-10, 5, 10, 5, 10, -5, -10, -5};
-        int m_n_vertices = m_vertices.size()/2;
+        std::vector<double> m_ob_boundary;
+        double m_vertices[8] = {-10, 5, 10, 5, 10, -5, -10, -5};
+        const int m_n = 4;
+        const double h = 1;
+        bool has_sent;
+
 
         Task(const std::string& name, Tasks::Context& ctx):
           DUNE::Control::PathController(name, ctx),
           m_os_received(false),
-          m_ca_active(false)
+          m_ca_active(false),
+          has_sent(false)
         {
           param("Separation Distance", m_args.dsep)
           .description("Minimum distance the vehicle should keep to the obstacle.")
@@ -88,11 +93,13 @@ namespace Control
           .units(Units::Degree);
 
           bind<IMC::Target>(this);
+
         }
 
         void
         onUpdateParameters(void)
         {
+          initializeObstacleBoundary();
           m_args.asafe = Angles::radians(m_args.asafe);
           PathController::onUpdateParameters();
         }
@@ -127,12 +134,67 @@ namespace Control
           }
         }
 
-        void updateVertices(double dx, double dy){
-          for (int i = 0; i < m_n_vertices; i++){
-            m_vertices[2*i] += dx;
-            m_vertices[2*i+1] += dy;
+        void
+        initializeObstacleBoundary(void){
+
+          double v1[2],v2[2], dydx, y0, p[2], len;
+          bool reverse;
+
+          v1[0] = m_vertices[0];
+          v1[1] = m_vertices[1];
+
+          for (int i = 1; i < m_n+1; i++){
+            if (i < m_n){
+              v2[0] = m_vertices[2*i];
+              v2[1] = m_vertices[2*i+1];
+            }else{
+              v2[0] = m_vertices[0];//! last, special case
+              v2[1] = m_vertices[1];
+            }
+            //! do stuff
+
+            p[0] = v1[0];
+            p[1] = v1[1];
+            m_ob_boundary.push_back(p[0]);
+            m_ob_boundary.push_back(p[1]);
+
+            if (std::abs(v2[0]-v1[0]) > 0.001){
+
+              dydx = (v2[1]-v1[1])/(v2[0]-v1[0]);
+              y0 = v2[1] - dydx*v2[0];
+              len = std::abs(v2[0]-v1[0])/h;
+              reverse = v1[0] > v2[0];
+
+              for (int j = 1; j < len; j ++){
+                if (reverse)
+                  p[0] -= h;
+                else
+                  p[0] += h;
+                p[1]= y0 + dydx*p[0];
+                m_ob_boundary.push_back(p[0]);
+                m_ob_boundary.push_back(p[1]);
+              }
+            }else{
+              // When there is no change in x, increase y while keeping x constant
+              len = std::abs(v2[1]-v1[1])/h;
+              reverse = v1[1] > v2[1];
+
+              for (int j = 1; j < len; j ++){
+                if (reverse)
+                  p[1] -= h;
+                else
+                  p[1] += h;
+
+                p[0] = v1[0];
+                m_ob_boundary.push_back(p[0]);
+                m_ob_boundary.push_back(p[1]);
+              }
+            }
+            v1[0] = v2[0];
+            v1[1] = v2[1];
           }
         }
+
 
 
         //! Returns the angle modulated between 0 and 2pi.
@@ -220,9 +282,10 @@ namespace Control
         void
         step(const IMC::EstimatedState & state, const TrackingState& ts)
         {
-          if (!m_os_received)
-          //! If we have not received obstacle measurements, continue with nominal guidance.
-            m_heading.value = ts.los_angle;
+          if (!m_os_received){
+            //! If we have not received obstacle measurements, continue with nominal guidance.
+              m_heading.value = ts.los_angle;
+          }
           else
           {
             //! Check if we need to avoid a collision
@@ -239,6 +302,13 @@ namespace Control
             m_heading.value = Angles::normalizeRadian(m_heading.value + state.psi - ts.course);
 
           dispatch(m_heading);
+          if (!has_sent){
+            for (int i = 0; i < m_ob_boundary.size()/2; i++){
+              inf("Boundary point at (%f, %f)", m_ob_boundary[2*i], m_ob_boundary[2*i+1]);
+            }
+            has_sent = true;
+          }
+
         }
       };
     }
