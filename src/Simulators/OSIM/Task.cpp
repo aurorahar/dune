@@ -51,8 +51,8 @@ namespace Simulators
       double u_max;
       bool save_data;
       std::vector<double> vertices;
-      bool shape_enabled;
       int n_vertices;
+      bool shape_enabled;
     };
 
     struct Point{
@@ -80,13 +80,14 @@ namespace Simulators
       std::ofstream m_data_file;
       bool m_in_maneuver;
 
-      //! Vehicle states
+      //! Vehicle state.
       bool m_estimate_received;
       Point m_vnepos;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
+
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_in_maneuver(false),
@@ -162,7 +163,8 @@ namespace Simulators
 
         if (m_args.shape_enabled){
 
-          //! Initialize polygon
+          //! Initialize polygon.
+
           m_polygon.id = "ObstaclePolygon";
           m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
 
@@ -176,8 +178,8 @@ namespace Simulators
 
             dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1]));
             dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1]));
-
             WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
+
             m_polygon.feature.push_back(map_point);
           }
         }
@@ -298,7 +300,7 @@ namespace Simulators
           r = Angles::minSignedAngle(m_os.cog, los);
         }
 
-        //! Update longitude and latitude
+        //! Update longitude and latitude.
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
         m_r = std::max(std::min(r,m_args.r_max), -m_args.r_max);
         m_os.cog += m_r*c_ts;
@@ -308,7 +310,7 @@ namespace Simulators
         m_os.sog = std::max(std::min(u, m_args.u_max), 0.0);
         m_os.cog = Angles::normalizeRadian(m_os.cog);
 
-        //! Update vertex positions
+        //! Update vertices.
         if (m_args.shape_enabled){
 
           int i = 0;
@@ -327,6 +329,7 @@ namespace Simulators
             p->lon = map_point.lon;
             i++;
           }
+
           dispatch(m_polygon);
         }
         dispatch(m_os);

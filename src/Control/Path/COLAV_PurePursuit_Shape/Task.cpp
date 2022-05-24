@@ -57,12 +57,10 @@ namespace Control
       struct Task: public DUNE::Control::PathController
       {
         Arguments m_args;
-
-        //! Desired heading to be transmitted
         IMC::DesiredHeading m_heading;
 
 
-        //! Collision Avoidance
+        //! Collision avoidance.
         double m_coll_cone[2];
         bool m_ca_active;
         int m_turn_dir;
@@ -70,7 +68,7 @@ namespace Control
         double m_d_min;
         bool m_wait_for_speed;
 
-        //! Obstacle State
+        //! Obstacle state.
         double m_opos[2];     // Lat, lon position
         Point m_ooffsett;     // NE offset
         double m_opsi;        // Heading
@@ -155,32 +153,25 @@ namespace Control
         m_ou = msg->sog;
         }
 
-        //! Returns the distance to the obstacle polygon.
-
+        //! Computes the distance from the vehicle to the obstacle polygon.
         void
         compMinDistance(const IMC::EstimatedState & vs){
 
           double dir, d, alpha;
           Point p1, p2, p2_rot, vehicle_rot;
-
-          //! Last vertex
-          IMC::MapPoint * map1 = * (m_vertices.end()-1);
+          IMC::MapPoint * map1 = * ( m_vertices.end()-1 );
 
           for (IMC::MapPoint * map2 : m_vertices){
-
-            //! Compute minimum distance to the current line segment.
-
-            //! Get NE position of the vertices
             Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, map1->lat, map1->lon, vs.height, &p1.x, &p1.y);
             Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, map2->lat, map2->lon, vs.height, &p2.x, &p2.y);
 
-            //! Rotate vehicle pos to a reference frame with origin in p1, aligned with the line p1-p2
+            //! Rotate vehicle pos to reference frame in p1 aligned with the line p1-p2.
             Coordinates::getBearingAndRange(p1, p2, &dir, &p2_rot.x);
 
             vehicle_rot.x = (vs.x-p1.x)*std::cos(-dir)-(vs.y-p1.y)*std::sin(-dir);
             vehicle_rot.y = (vs.x-p1.x)*std::sin(-dir)+(vs.y-p1.y)*std::cos(-dir);
 
-            //! Then a simple check to see if the vehicle position is between 0 and p2
+            //! Then a simple check to see if vehicle pos is between 0 and p2.
             if (vehicle_rot.x <= 0 || vehicle_rot.x >= p2_rot.x)
               d = std::min(Coordinates::getRange(vs, p1), Coordinates::getRange(vs, p2));
             else
@@ -188,7 +179,7 @@ namespace Control
 
             alpha = Coordinates::getBearing(vs, p2);
 
-            //! Update minimum distance and orientiation.
+            //! Update the minimum distance and orientation accordingly.
             m_alpha_min = std::min(alpha, m_alpha_min);
             m_d_min = std::min(d, m_d_min);
 
@@ -196,8 +187,7 @@ namespace Control
           }
         }
 
-        //! Computes the collision cone of the polygon.
-
+        //! Computes the collision cone between the vehicle and the obstacle polygon.
         void
         compColCone(const EstimatedState & vs){
 
@@ -214,13 +204,10 @@ namespace Control
 
             Coordinates::getBearingAndRange(m_ooffsett, p, &phi, &d);
 
-            //! Inertial velocity of the considered point.
-
             double vx = m_ou*std::cos(m_opsi) - m_or*d*std::sin(phi);
             double vy = m_ou*std::sin(m_opsi) + m_or*d*std::cos(phi);
 
             if ( std::sqrt(vx*vx+vy*vy) > speed ){
-              //! Cannot compute the velocity compensation term, we resume nominal guidance until speed requirement holds.
               debug("Cannot compute velocity compensation term -- speed too low.");
               m_wait_for_speed = true;
               return;
@@ -262,18 +249,10 @@ namespace Control
         void
         shouldCA(const IMC::EstimatedState & vs, double course){
 
-          //! Update center offset.
           Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, m_opos[0], m_opos[1], vs.height, &m_ooffsett.x, &m_ooffsett.y);
           Coordinates::getBearingAndRange(vs, m_ooffsett, &m_alpha_min, &m_d_min);
 
-          //! Compute distance to the obstacle.
           compMinDistance(vs);
-
-          //! Feasibility check.
-          if (m_wait_for_speed){
-            m_ca_active = false;
-            return;
-          }
 
           // ! Collision avoidance algorithm.
           // ! Check if the vehicle is already avoiding collision or if the
@@ -285,8 +264,13 @@ namespace Control
 
           if ( m_d_min < m_args.dsafe || m_ca_active ){
 
-            //! Compute collision cone.
             compColCone(vs);
+
+            //! Feasibility check.
+            if (m_wait_for_speed){
+              m_ca_active = false;
+              return;
+            }
 
             //! Check if the desired course is between the collision cone angles.
             double direction_rot = mapAngle(mapAngle(course) - m_coll_cone[0]);
@@ -322,7 +306,7 @@ namespace Control
           }
           else
           {
-            //! Check if we need to avoid a collision
+            //! Check if we need to avoid a collision.
             shouldCA(state, ts.los_angle);
 
             if ( m_ca_active )
