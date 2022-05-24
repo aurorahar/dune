@@ -50,31 +50,47 @@ namespace Simulators
       double a_max;
       double u_max;
       bool save_data;
+      std::vector<double> vertices;
+      bool shape_enabled;
+      int n_vertices;
+    };
+
+    struct Point{
+      double x;
+      double y;
     };
 
     struct Task: public DUNE::Tasks::Periodic
     {
        //! Arguments.
       Arguments m_args;
-      //! Obstacle state to be sent.
+
+      //! Obstacle state and polygon to be sent.
       IMC::Target m_os;
-      //! Save North East position.
-      double m_nepos[2];
+      IMC::MapFeature m_polygon;
+
+      //! North East position and heading rate.
+      Point m_nepos;
+      double m_r;
+
       //! Step size of numerical integration.
       double c_ts;
+
       //! File for saving the data.
       std::ofstream m_data_file;
       bool m_in_maneuver;
 
-      //! Tracking the vehicle
+      //! Vehicle states
       bool m_estimate_received;
-      double m_vnepos[2];
+      Point m_vnepos;
 
       //! Constructor.
       //! @param[in] name task name.
       //! @param[in] ctx context.
       Task(const std::string& name, Tasks::Context& ctx):
-        DUNE::Tasks::Periodic(name, ctx),m_in_maneuver(false), m_estimate_received(false)
+        DUNE::Tasks::Periodic(name, ctx),
+        m_in_maneuver(false),
+        m_estimate_received(false)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
@@ -114,6 +130,15 @@ namespace Simulators
         param("Save Data", m_args.save_data)
         .defaultValue("false");
 
+        param("Enable Shape", m_args.shape_enabled)
+        .defaultValue("false");
+
+        param("Vertex Placements", m_args.vertices)
+        .description("Position of the polygon vertices with respect to the center.");
+
+        param("Number of Vertices", m_args.n_vertices)
+        .defaultValue("0");
+
         bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
       }
@@ -128,12 +153,34 @@ namespace Simulators
         //! Initialize obstacle states.
         m_os.lat = Math::Angles::radians(m_args.position[0]);
         m_os.lon = Math::Angles::radians(m_args.position[1]);
-        WGS84::displace(m_args.offset[0], m_args.offset[1],  &m_os.lat, &m_os.lon);
-        m_nepos[0] = m_args.offset[0];
-        m_nepos[1] = m_args.offset[1];
+        m_nepos.x = m_args.offset[0];
+        m_nepos.y = m_args.offset[1];
+        WGS84::displace(m_nepos.x, m_nepos.y,  &m_os.lat, &m_os.lon);
         m_os.cog = Math::Angles::radians(m_args.heading);
         m_os.sog = m_args.speed;
         m_os.label = "ObstacleState";
+
+        if (m_args.shape_enabled){
+
+          //! Initialize polygon
+          m_polygon.id = "ObstaclePolygon";
+          m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
+
+          double dx, dy;
+
+          for (int i = 0; i < m_args.n_vertices; i++)
+          {
+            IMC::MapPoint map_point;
+            map_point.lat = m_os.lat;
+            map_point.lon = m_os.lon;
+
+            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1]));
+            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1]));
+
+            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
+            m_polygon.feature.push_back(map_point);
+          }
+        }
       }
 
       //! Reserve entity identifiers.
@@ -165,7 +212,6 @@ namespace Simulators
       void
       onResourceRelease(void)
       {
-
         if (m_data_file.is_open()){
           inf("Closing file.");
           m_data_file.close();
@@ -184,27 +230,26 @@ namespace Simulators
             std::string timestr = Format::getTimeDate();
 
             //! Remove illegal characters, year and seconds.
-            std::string name = timestr.substr(5,2)
-            +timestr.substr(8,2)+ timestr.substr(11,2)+ timestr.substr(14,2);
+            std::string name = timestr.substr(5,2)+timestr.substr(8,2)+timestr.substr(11,2)+timestr.substr(14,2);
 
             //! Open the file in the designated MATLAB folder.
             m_data_file.open("../../MATLAB/DUNE_Experiments/log/"+ name +".txt");
 
-            //! Check that we made the file.
+            //! Confirm that we made the file.
             if (!m_data_file)
               inf("Cannot open file.");
             else{
               inf("Generated file %s to write.", name.c_str());
             }
-            m_in_maneuver = true;
           }
+          m_in_maneuver = true;
         }else{
-
-          //! We close the file once the maneuver is over.
+          //! We close the file since the maneuver is over.
           if (m_in_maneuver){
             if (m_data_file.is_open()){
               inf("Closing file.");
               m_data_file.close();
+
             }
             m_in_maneuver = false;
           }
@@ -219,16 +264,16 @@ namespace Simulators
           //! Write data to file if we are in a maneuver.
           //! We save both the obstacle and vehicle state.
 
-          m_data_file << m_nepos[0]<<"\n"<<m_nepos[1]<<"\n"<<m_os.cog << "\n"
+          m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
-          << "\n" << msg->u << "\n" << msg->v << "\n" << msg->r << "\n";
+          << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n";
         }
-        
         if (!m_estimate_received)
           m_estimate_received = true;
 
-        m_vnepos[0] = msg->x;
-        m_vnepos[1] = msg->y;
+        m_vnepos.x = msg->x;
+        m_vnepos.y = msg->y;
+
       }
 
       //! Sends the state of the obstacle.
@@ -239,30 +284,51 @@ namespace Simulators
         //! Unicycle kinematics.
         double n = m_os.sog*std::cos(m_os.cog)*c_ts;
         double e = m_os.sog*std::sin(m_os.cog)*c_ts;
-        m_nepos[0] += n;
-        m_nepos[1] += e;
+        m_nepos.x += n;
+        m_nepos.y += e;
 
         //! Heading rate and acceleration of the obstacle.
-        //! Now making the obstacle track the vehicle.
+        //! We set the obstacle to track the vehicle.
 
         double a = m_args.a_max;
         double r = 0.0;
 
         if (m_estimate_received){
-          double los = std::atan2(m_vnepos[1]-m_nepos[1],m_vnepos[0]-m_nepos[0]);
+          double los = Coordinates::getBearing(m_nepos, m_vnepos);
           r = Angles::minSignedAngle(m_os.cog, los);
         }
 
         //! Update longitude and latitude
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
-
-        m_os.cog += std::max(std::min(r,m_args.r_max), -m_args.r_max)*c_ts;
+        m_r = std::max(std::min(r,m_args.r_max), -m_args.r_max);
+        m_os.cog += m_r*c_ts;
         double u = m_os.sog+std::max(std::min(a,m_args.a_max), -m_args.a_max)*c_ts;
 
         //! Ensure that speed is between 0 and max and course between -pi and pi
         m_os.sog = std::max(std::min(u, m_args.u_max), 0.0);
         m_os.cog = Angles::normalizeRadian(m_os.cog);
 
+        //! Update vertex positions
+        if (m_args.shape_enabled){
+
+          int i = 0;
+
+          for (IMC::MapPoint * p : m_polygon.feature)
+          {
+            IMC::MapPoint map_point;
+            map_point.lat = Math::Angles::radians(m_args.position[0]);
+            map_point.lon= Math::Angles::radians(m_args.position[1]);
+
+            double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog-Angles::radians(m_args.heading));
+            double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog-Angles::radians(m_args.heading));
+
+            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
+            p->lat = map_point.lat;
+            p->lon = map_point.lon;
+            i++;
+          }
+          dispatch(m_polygon);
+        }
         dispatch(m_os);
       }
 
