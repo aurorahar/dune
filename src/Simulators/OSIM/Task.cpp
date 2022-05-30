@@ -72,6 +72,8 @@ namespace Simulators
       //! North East position and heading rate.
       Point m_nepos;
       double m_r;
+      double m_desired_heading;
+      double m_maneuver_start;
 
       //! Step size of numerical integration.
       double c_ts;
@@ -79,10 +81,13 @@ namespace Simulators
       //! File for saving the data.
       std::ofstream m_data_file;
       bool m_in_maneuver;
+      double m_stop_time;
+      bool m_timer_on;
 
       //! Vehicle state.
       bool m_estimate_received;
       Point m_vnepos;
+      const double c_time_thresh = 5;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -91,7 +96,8 @@ namespace Simulators
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_in_maneuver(false),
-        m_estimate_received(false)
+        m_estimate_received(false),
+        m_timer_on(false)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
@@ -140,7 +146,9 @@ namespace Simulators
         param("Number of Vertices", m_args.n_vertices)
         .defaultValue("0");
 
-        bind<IMC::EstimatedState>(this);
+        //! Change this to estimated state during experiments, or remove entirely
+        //! if we save the data other ways.
+        bind<IMC::SimulatedState>(this);
         bind<IMC::VehicleState>(this);
       }
 
@@ -150,6 +158,7 @@ namespace Simulators
       {
         //! Set time step according to the execution frequency.
         c_ts = 1.0/getFrequency();
+        m_stop_time = Clock::get();
 
         //! Initialize obstacle states.
         m_os.lat = Math::Angles::radians(m_args.position[0]);
@@ -243,23 +252,32 @@ namespace Simulators
             else{
               inf("Generated file %s to write.", name.c_str());
             }
+            m_maneuver_start = Clock::get();
           }
           m_in_maneuver = true;
         }else{
-          //! We close the file since the maneuver is over.
-          if (m_in_maneuver){
+
+          if (m_in_maneuver && !m_timer_on){
+            m_stop_time = Clock::get();
+            m_timer_on = true;
+          }
+
+          if (m_timer_on && Clock::get()- m_stop_time > c_time_thresh){
+            //! We close the file since the maneuver is over.
             if (m_data_file.is_open()){
               inf("Closing file.");
               m_data_file.close();
+              }
 
-            }
             m_in_maneuver = false;
+            m_timer_on = false;
           }
         }
       }
 
+
       void
-      consume(const IMC::EstimatedState * msg){
+      consume(const IMC::SimulatedState * msg){
 
         if (m_in_maneuver && m_data_file.is_open()){
 
@@ -268,7 +286,7 @@ namespace Simulators
 
           m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
-          << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n";
+          << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
         }
         if (!m_estimate_received)
           m_estimate_received = true;
@@ -295,11 +313,11 @@ namespace Simulators
         double a = m_args.a_max;
         double r = 0.0;
 
-        if (m_estimate_received){
-          double los = Coordinates::getBearing(m_nepos, m_vnepos);
-          r = Angles::minSignedAngle(m_os.cog, los);
-        }
-
+        // if (m_estimate_received){
+        //   double los = Coordinates::getBearing(m_nepos, m_vnepos);
+        //   r = Angles::minSignedAngle(m_os.cog, los);
+        // }
+        r = Angles::minSignedAngle(m_os.cog, m_desired_heading);
         //! Update longitude and latitude.
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
         m_r = std::max(std::min(r,m_args.r_max), -m_args.r_max);
@@ -329,7 +347,6 @@ namespace Simulators
             p->lon = map_point.lon;
             i++;
           }
-
           dispatch(m_polygon);
         }
         dispatch(m_os);
@@ -340,7 +357,14 @@ namespace Simulators
       {
         //! Send the state of the obstacle regularly.
         if (m_in_maneuver){
-            sendState();
+
+            m_desired_heading = Angles::radians(-90.0);
+
+            if ( Clock::get() - m_maneuver_start > 20.0 ){
+              m_desired_heading = Angles::radians(-180.0);
+            }
+
+           sendState();
         }
       }
     };

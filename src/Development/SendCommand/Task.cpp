@@ -40,6 +40,7 @@ namespace Development
     struct Arguments{
       std::vector<double> position;
       std::vector<double> offset;
+      double speed;
     };
 
 
@@ -77,6 +78,11 @@ namespace Development
         .size(2)
         .units(Units::Meter);
 
+        param("Speed", m_args.speed)
+        .description("Commanded speed")
+        .units(Units::MeterPerSecond)
+        .defaultValue("1.5");
+
 
         bind<IMC::VehicleCommand>(this);
         bind<IMC::VehicleState>(this);
@@ -92,7 +98,7 @@ namespace Development
         WGS84::displace(m_args.offset[0], m_args.offset[1],  &m_goto.lat, &m_goto.lon);
         m_goto.z = 0.0;
         m_goto.z_units = IMC::Z_ALTITUDE;
-        m_goto.speed = 1.5;
+        m_goto.speed = m_args.speed;
         m_goto.speed_units = IMC::SUNITS_METERS_PS;
 
         //! Inline message.

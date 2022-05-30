@@ -47,6 +47,7 @@ namespace Control
         double dsafe;
         double asafe;
         double frequency;
+        double d_margin;
       };
 
       struct Point{
@@ -59,21 +60,19 @@ namespace Control
         Arguments m_args;
         IMC::DesiredHeading m_heading;
 
-
         //! Collision avoidance.
         double m_coll_cone[2];
         bool m_ca_active;
         int m_turn_dir;
+
         double m_alpha_min;
         double m_d_min;
         bool m_wait_for_speed;
 
         //! Obstacle state.
-        double m_opos[2];     // Lat, lon position
+        IMC::Target m_ob;     // Obstacle state
         Point m_ooffsett;     // NE offset
-        double m_opsi;        // Heading
-        double m_ou;          // Speed
-        double m_or;          // Heading rate
+        double m_or;          // Estimated heading rate
         bool m_os_received;
         double m_ts;
 
@@ -105,6 +104,10 @@ namespace Control
           .description("Frequency at which the obstacle state is sent.")
           .defaultValue("10.0");
 
+          param("Distance Margin", m_args.d_margin)
+          .defaultValue("0.1")
+          .units(Units::Meter);
+
           bind<IMC::Target>(this);
           bind<IMC::MapFeature>(this);
         }
@@ -112,7 +115,7 @@ namespace Control
         void
         onUpdateParameters(void)
         {
-          m_ts = 1/m_args.frequency;
+          m_ts = 1.0/m_args.frequency;
           m_args.asafe = Angles::radians(m_args.asafe);
           PathController::onUpdateParameters();
         }
@@ -134,23 +137,21 @@ namespace Control
           disableControlLoops(IMC::CL_YAW);
         }
 
+        //! Save position of polygon vertices.
         void consume(const IMC::MapFeature * msg){
           m_vertices = msg->feature;
         }
 
+        //! Save obstacle measurements.
         void consume(const IMC::Target * msg){
 
-          //! Save obstacle measurements.
-          if (!m_os_received){
+         if(!m_os_received){
             m_os_received = true;
             m_or = 0.0;
           }else
-            m_or = (msg->cog-m_opsi)/(m_ts);
+            m_or = (msg->cog-m_ob.cog)/(m_ts);
 
-        m_opos[0] = msg->lat;
-        m_opos[1] = msg->lon;
-        m_opsi = msg->cog;
-        m_ou = msg->sog;
+          m_ob = *msg;
         }
 
         //! Computes the distance from the vehicle to the obstacle polygon.
@@ -159,7 +160,9 @@ namespace Control
 
           double dir, d, alpha;
           Point p1, p2, p2_rot, vehicle_rot;
-          IMC::MapPoint * map1 = * ( m_vertices.end()-1 );
+
+          //! Last vertex
+          IMC::MapPoint * map1 = *(m_vertices.end()-1);
 
           for (IMC::MapPoint * map2 : m_vertices){
             Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, map1->lat, map1->lon, vs.height, &p1.x, &p1.y);
@@ -175,7 +178,7 @@ namespace Control
             if (vehicle_rot.x <= 0 || vehicle_rot.x >= p2_rot.x)
               d = std::min(Coordinates::getRange(vs, p1), Coordinates::getRange(vs, p2));
             else
-              d = std::sqrt(vehicle_rot.y*vehicle_rot.y + vehicle_rot.x*vehicle_rot.x)*std::sin(std::abs(std::atan2(vehicle_rot.y, vehicle_rot.x)));
+              d = Math::norm(vehicle_rot.x,vehicle_rot.y)*std::sin(std::abs(std::atan2(vehicle_rot.y, vehicle_rot.x)));
 
             alpha = Coordinates::getBearing(vs, p2);
 
@@ -195,7 +198,7 @@ namespace Control
           double max_angle = -2*c_pi;
           double phi, alpha, d;
 
-          double speed = std::sqrt(vs.u*vs.u+vs.v*vs.v);
+          double speed = Math::norm(vs.u, vs.v);
           Point p;
 
           for (IMC::MapPoint * map_p : m_vertices){
@@ -204,15 +207,16 @@ namespace Control
 
             Coordinates::getBearingAndRange(m_ooffsett, p, &phi, &d);
 
-            double vx = m_ou*std::cos(m_opsi) - m_or*d*std::sin(phi);
-            double vy = m_ou*std::sin(m_opsi) + m_or*d*std::cos(phi);
+            double vx = m_ob.sog*std::cos(m_ob.cog) - m_or*d*std::sin(phi);
+            double vy = m_ob.sog*std::sin(m_ob.cog) + m_or*d*std::cos(phi);
 
-            if ( std::sqrt(vx*vx+vy*vy) > speed ){
+            //! Feasibility check.
+            if ( Math::norm(vx,vy) > speed ){
               debug("Cannot compute velocity compensation term -- speed too low.");
               m_wait_for_speed = true;
               return;
             }
-
+            m_wait_for_speed = false;
             Coordinates::getBearingAndRange(vs, p, &alpha, &d);
 
             double beta = d >= m_args.dsep ? std::asin(m_args.dsep/d) : c_pi-std::asin(d/m_args.dsep);
@@ -236,7 +240,7 @@ namespace Control
         //! Returns the velocity compensation angle.
         double
         compAngle(double psic, double vx, double vy, double speed){
-           return std::asin(( std::sqrt(vx*vx+vy*vy)/speed )* std::sin(c_pi-std::atan2(vy,vx)+psic));
+           return std::asin(( Math::norm(vx,vy)/speed )* std::sin(c_pi-std::atan2(vy,vx)+psic));
         }
 
         //! Returns the angle modulated between 0 and 2pi.
@@ -249,7 +253,7 @@ namespace Control
         void
         shouldCA(const IMC::EstimatedState & vs, double course){
 
-          Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, m_opos[0], m_opos[1], vs.height, &m_ooffsett.x, &m_ooffsett.y);
+          Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, m_ob.lat, m_ob.lon, vs.height, &m_ooffsett.x, &m_ooffsett.y);
           Coordinates::getBearingAndRange(vs, m_ooffsett, &m_alpha_min, &m_d_min);
 
           compMinDistance(vs);
@@ -262,24 +266,27 @@ namespace Control
           // ! If we are not in an ongoing evasive maneuver, but are initiating
           // ! one, we choose the turning direction.
 
-          if ( m_d_min < m_args.dsafe || m_ca_active ){
+          if ( m_d_min <= m_args.dsafe || m_ca_active ){
 
             compColCone(vs);
 
-            //! Feasibility check.
-            if (m_wait_for_speed){
+            if ( m_wait_for_speed ){
               m_ca_active = false;
               return;
             }
 
             //! Check if the desired course is between the collision cone angles.
+
             double direction_rot = mapAngle(mapAngle(course) - m_coll_cone[0]);
             double cone_rot = mapAngle(m_coll_cone[1] - m_coll_cone[0]);
 
             if ( direction_rot < cone_rot ) {
               //! Here we choose turning direction.
               if ( !m_ca_active ){
-                m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+                if ( m_args.dsafe-m_d_min < m_args.d_margin )
+                  m_turn_dir = std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0])) >= std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) ? 0 : 1;
+                else
+                  m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
                 inf("Avoiding collision.");
               }
               //! Activate collision avoidance.
