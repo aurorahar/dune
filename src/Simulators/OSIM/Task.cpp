@@ -335,16 +335,13 @@ namespace Simulators
 
           for (IMC::MapPoint * p : m_polygon.feature)
           {
-            IMC::MapPoint map_point;
-            map_point.lat = Math::Angles::radians(m_args.position[0]);
-            map_point.lon= Math::Angles::radians(m_args.position[1]);
+            p->lat = Math::Angles::radians(m_args.position[0]);
+            p->lon = Math::Angles::radians(m_args.position[1]);
 
             double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
             double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
 
-            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
-            p->lat = map_point.lat;
-            p->lon = map_point.lon;
+            WGS84::displace(dx, dy,  &p->lat, &p->lon);
             i++;
           }
           dispatch(m_polygon);
