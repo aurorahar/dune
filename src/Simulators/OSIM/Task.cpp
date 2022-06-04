@@ -87,7 +87,7 @@ namespace Simulators
       //! Vehicle state.
       bool m_estimate_received;
       Point m_vnepos;
-      const double c_time_thresh = 5;
+      const double c_time_thresh = 5.0;
 
       //! Constructor.
       //! @param[in] name task name.
@@ -185,8 +185,8 @@ namespace Simulators
             map_point.lat = m_os.lat;
             map_point.lon = m_os.lon;
 
-            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1]));
-            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1]));
+            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
             WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
 
             m_polygon.feature.push_back(map_point);
@@ -339,8 +339,8 @@ namespace Simulators
             map_point.lat = Math::Angles::radians(m_args.position[0]);
             map_point.lon= Math::Angles::radians(m_args.position[1]);
 
-            double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog-Angles::radians(m_args.heading));
-            double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog-Angles::radians(m_args.heading));
+            double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+            double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
 
             WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
             p->lat = map_point.lat;
@@ -358,10 +358,10 @@ namespace Simulators
         //! Send the state of the obstacle regularly.
         if (m_in_maneuver){
 
-            m_desired_heading = Angles::radians(-90.0);
+            m_desired_heading = Angles::radians(45.0);
 
-            if ( Clock::get() - m_maneuver_start > 20.0 ){
-              m_desired_heading = Angles::radians(-180.0);
+            if ( Clock::get() - m_maneuver_start > 15.0 ){
+              m_desired_heading = Angles::radians(90.0);
             }
 
            sendState();

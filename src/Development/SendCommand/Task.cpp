@@ -97,7 +97,7 @@ namespace Development
         m_goto.lon = Math::Angles::radians(m_args.position[1]);
         WGS84::displace(m_args.offset[0], m_args.offset[1],  &m_goto.lat, &m_goto.lon);
         m_goto.z = 0.0;
-        m_goto.z_units = IMC::Z_ALTITUDE;
+        m_goto.z_units = IMC::Z_DEPTH;
         m_goto.speed = m_args.speed;
         m_goto.speed_units = IMC::SUNITS_METERS_PS;
 

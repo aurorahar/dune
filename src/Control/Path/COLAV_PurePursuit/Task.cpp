@@ -47,6 +47,8 @@ namespace Control
         double dsep;
         double dsafe;
         double asafe;
+        double d_margin;
+        double weight;
       };
 
       struct Point{
@@ -58,7 +60,6 @@ namespace Control
       {
         Arguments m_args;
         IMC::DesiredHeading m_heading;
-        IMC::EstimatedState m_estate;
 
         //! Collision Avoidance
         double m_coll_cone[2];
@@ -67,9 +68,7 @@ namespace Control
 
         //! Obstacle State
         Point m_ooffsett;
-        double m_opos[2];
-        double m_opsi;
-        double m_ou;
+        IMC::Target m_ob;
         bool m_os_received;
 
         Task(const std::string& name, Tasks::Context& ctx):
@@ -89,7 +88,11 @@ namespace Control
           .description("Safety angle by which we extend the collision cone.")
           .defaultValue("10.0")
           .units(Units::Degree);
-
+          param("Distance Margin", m_args.d_margin)
+          .defaultValue("0.1")
+          .units(Units::Meter);
+          param("Weight",m_args.weight)
+          .defaultValue("0.5");
 
           bind<IMC::Target>(this);
         }
@@ -120,15 +123,12 @@ namespace Control
 
         void consume(const IMC::Target * os){
 
-          //! Save obstacle measurements.
-          m_opos[0] = os->lat;
-          m_opos[1] = os->lon;
-          m_opsi = os->cog;
-          m_ou = os->sog;
+          m_ob = * os;
 
           if (!m_os_received){
             m_os_received = true;
           }
+
         }
 
 
@@ -143,8 +143,8 @@ namespace Control
         shouldCA(const IMC::EstimatedState & vs, double course){
 
           //! Compute x,y offset of obstacle
-          Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, m_opos[0], m_opos[1], vs.height, &m_ooffsett.x, &m_ooffsett.y);
-          
+          Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, m_ob.lat, m_ob.lon, vs.height, &m_ooffsett.x, &m_ooffsett.y);
+
           //! Compute the distance and orientation to the obstacle.
           double d, alpha, beta;
           Coordinates::getBearingAndRange(vs, m_ooffsett, &alpha, &d);
@@ -167,13 +167,10 @@ namespace Control
 
           if ( d <= m_args.dsafe || m_ca_active ){
 
-            double u = vs.u;
-            double v = vs.v;
-
-            double speed = std::sqrt(u*u + v*v);
+            double speed = Math::norm(vs.u, vs.v);
 
             //! Feasibility check
-            if (m_ou > speed){
+            if (m_ob.sog > speed){
               //! Cannot compute the velocity compensation term, resuming guidance.
               debug("collision cone error");
               m_ca_active = false;
@@ -183,8 +180,8 @@ namespace Control
             //! Compute cone angles modulated between 0 and 2pi. This mapping
             //! ensures that the collision check below is correct.
 
-            m_coll_cone[0] = mapAngle(alpha - beta - m_args.asafe + std::asin(m_ou/speed * std::sin(c_pi - m_opsi + alpha - beta - m_args.asafe))) ;
-            m_coll_cone[1] = mapAngle(alpha + beta + m_args.asafe + std::asin(m_ou/speed * std::sin(c_pi - m_opsi + alpha + beta + m_args.asafe))) ;
+            m_coll_cone[0] = mapAngle(alpha - beta - m_args.asafe + std::asin(m_ob.sog/speed * std::sin(c_pi - m_ob.cog + alpha - beta - m_args.asafe))) ;
+            m_coll_cone[1] = mapAngle(alpha + beta + m_args.asafe + std::asin(m_ob.sog/speed * std::sin(c_pi - m_ob.cog + alpha + beta + m_args.asafe))) ;
 
             //! Check if the desired course is between the collision cone angles.
             double direction_rot = mapAngle(mapAngle(course) - m_coll_cone[0]);
@@ -194,7 +191,15 @@ namespace Control
 
               //! Here we choose turning direction.
               if ( !m_ca_active ){
-                m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+                if(m_args.dsafe - d < m_args.d_margin){
+                  double a = -m_args.weight*std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0])) + (1-m_args.weight)*std::abs(Angles::minSignedAngle(course,m_coll_cone[0]));
+                  double b = -m_args.weight*std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) + (1-m_args.weight)*std::abs(Angles::minSignedAngle(course,m_coll_cone[1]));
+
+                  m_turn_dir = a <= b ? 0 : 1;
+                }
+                else
+                  m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+
                 inf("Avoiding collision.");
               }
               //! Activate collision avoidance.

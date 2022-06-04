@@ -48,6 +48,7 @@ namespace Control
         double asafe;
         double frequency;
         double d_margin;
+        double weight;
       };
 
       struct Point{
@@ -107,6 +108,10 @@ namespace Control
           param("Distance Margin", m_args.d_margin)
           .defaultValue("0.1")
           .units(Units::Meter);
+
+          param("Weight", m_args.weight)
+          .description("Weighting factor for choosing maneuver direction.")
+          .defaultValue("0.5");
 
           bind<IMC::Target>(this);
           bind<IMC::MapFeature>(this);
@@ -283,10 +288,18 @@ namespace Control
             if ( direction_rot < cone_rot ) {
               //! Here we choose turning direction.
               if ( !m_ca_active ){
-                if ( m_args.dsafe-m_d_min < m_args.d_margin )
-                  m_turn_dir = std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0])) >= std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) ? 0 : 1;
+                if ( m_args.dsafe-m_d_min < m_args.d_margin ){
+
+                  //! Closest angle to vehicle course.
+                  int closest = std::abs(Angles::minSignedAngle(course,m_coll_cone[0]))<= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+                  //! Farthest angle from obstacle course.
+                  int behind =  std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0]))>= std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) ? 0 : 1;
+
+                  m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[closest])) <= m_args.weight*std::abs(Angles::minSignedAngle(course,m_coll_cone[behind])) ? closest : behind;
+                }
                 else
                   m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+
                 inf("Avoiding collision.");
               }
               //! Activate collision avoidance.
