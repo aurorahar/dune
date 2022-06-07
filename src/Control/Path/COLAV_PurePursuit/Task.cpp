@@ -122,12 +122,10 @@ namespace Control
         }
 
         void consume(const IMC::Target * os){
-
           m_ob = * os;
 
-          if (!m_os_received){
+          if (!m_os_received)
             m_os_received = true;
-          }
 
         }
 
@@ -179,7 +177,6 @@ namespace Control
 
             //! Compute cone angles modulated between 0 and 2pi. This mapping
             //! ensures that the collision check below is correct.
-
             m_coll_cone[0] = mapAngle(alpha - beta - m_args.asafe + std::asin(m_ob.sog/speed * std::sin(c_pi - m_ob.cog + alpha - beta - m_args.asafe))) ;
             m_coll_cone[1] = mapAngle(alpha + beta + m_args.asafe + std::asin(m_ob.sog/speed * std::sin(c_pi - m_ob.cog + alpha + beta + m_args.asafe))) ;
 
@@ -192,10 +189,14 @@ namespace Control
               //! Here we choose turning direction.
               if ( !m_ca_active ){
                 if(m_args.dsafe - d < m_args.d_margin){
-                  double a = -m_args.weight*std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0])) + (1-m_args.weight)*std::abs(Angles::minSignedAngle(course,m_coll_cone[0]));
-                  double b = -m_args.weight*std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) + (1-m_args.weight)*std::abs(Angles::minSignedAngle(course,m_coll_cone[1]));
 
-                  m_turn_dir = a <= b ? 0 : 1;
+                  //! Closest angle to vehicle course.
+                  int closest = std::abs(Angles::minSignedAngle(course,m_coll_cone[0]))<= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
+                  //! Farthest angle from obstacle course.
+                  int behind =  std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0]))>= std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) ? 0 : 1;
+
+                  m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[closest])) <= m_args.weight*std::abs(Angles::minSignedAngle(course,m_coll_cone[behind])) ? closest : behind;
+
                 }
                 else
                   m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;

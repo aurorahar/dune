@@ -44,15 +44,20 @@ namespace Simulators
     struct Arguments{
       std::vector<double> position;
       std::vector<double> offset;
+      std::vector<double> vertices;
+      std::vector<double> target;
       double heading;
       double speed;
       double r_max;
       double a_max;
       double u_max;
+      double d_lim;
+      double Delta;
+      double turn_time;
       bool save_data;
-      std::vector<double> vertices;
-      int n_vertices;
       bool shape_enabled;
+      int n_vertices;
+      int mode;
     };
 
     struct Point{
@@ -72,8 +77,8 @@ namespace Simulators
       //! North East position and heading rate.
       Point m_nepos;
       double m_r;
-      double m_desired_heading;
       double m_maneuver_start;
+      bool m_tracking_done;
 
       //! Step size of numerical integration.
       double c_ts;
@@ -84,9 +89,12 @@ namespace Simulators
       double m_stop_time;
       bool m_timer_on;
 
-      //! Vehicle state.
+      //! Vehicle state for target tracking.
       bool m_estimate_received;
       Point m_vnepos;
+      double m_vx;
+      double m_vy;
+
       const double c_time_thresh = 5.0;
 
       //! Constructor.
@@ -97,7 +105,8 @@ namespace Simulators
         DUNE::Tasks::Periodic(name, ctx),
         m_in_maneuver(false),
         m_estimate_received(false),
-        m_timer_on(false)
+        m_timer_on(false),
+        m_tracking_done(false)
       {
         param("Position", m_args.position)
         .description("Position of the reference origin. ")
@@ -145,6 +154,25 @@ namespace Simulators
 
         param("Number of Vertices", m_args.n_vertices)
         .defaultValue("0");
+
+        param("Constant Bearing Delta", m_args.Delta)
+        .defaultValue("1.0");
+
+        param("Mode", m_args.mode)
+        .defaultValue("0");
+
+        param("Turn At Time", m_args.turn_time)
+        .defaultValue("15.0")
+        .units(Units::Second);
+
+        param("Target Position", m_args.target)
+        .size(2)
+        .defaultValue("110.0, 0.0")
+        .units(Units::Meter);
+
+        param("Tracking Limit", m_args.d_lim)
+        .defaultValue("30.0")
+        .units(Units::Meter);
 
         //! Change this to estimated state during experiments, or remove entirely
         //! if we save the data other ways.
@@ -261,9 +289,8 @@ namespace Simulators
             m_stop_time = Clock::get();
             m_timer_on = true;
           }
-
+          //! Wait a few seconds before closing the file.
           if (m_timer_on && Clock::get()- m_stop_time > c_time_thresh){
-            //! We close the file since the maneuver is over.
             if (m_data_file.is_open()){
               inf("Closing file.");
               m_data_file.close();
@@ -291,8 +318,12 @@ namespace Simulators
         if (!m_estimate_received)
           m_estimate_received = true;
 
+        //! Vehicle position for target tracking.
         m_vnepos.x = msg->x;
         m_vnepos.y = msg->y;
+        //! Vehicle ground speed for constant bearing guidance.
+        m_vx = msg->u*std::cos(msg->psi)-msg->v*std::sin(msg->psi);
+        m_vy = msg->u*std::sin(msg->psi)+msg->v*std::cos(msg->psi);
 
       }
 
@@ -308,16 +339,51 @@ namespace Simulators
         m_nepos.y += e;
 
         //! Heading rate and acceleration of the obstacle.
-        //! We set the obstacle to track the vehicle.
+        //! The mode decides what the obstacle should do.
 
         double a = m_args.a_max;
-        double r = 0.0;
+        double psid = Angles::radians(m_args.heading);
 
-        // if (m_estimate_received){
-        //   double los = Coordinates::getBearing(m_nepos, m_vnepos);
-        //   r = Angles::minSignedAngle(m_os.cog, los);
-        // }
-        r = Angles::minSignedAngle(m_os.cog, m_desired_heading);
+        switch(m_args.mode){
+          case 0:
+            //! Constant heading.
+            break;
+          case 1:
+            //! Right turn.
+            if (Clock::get()-m_maneuver_start > m_args.turn_time){
+              psid = Angles::radians(m_args.heading+90.0);
+            }
+            break;
+          case 2:
+            //! Left turn.
+            if (Clock::get()-m_maneuver_start > m_args.turn_time){
+                psid = Angles::radians(m_args.heading -90.0);
+            }
+            break;
+          case 3:
+            //! Pure pursuit tracking.
+            if (m_estimate_received)
+              psid = Coordinates::getBearing(m_nepos, m_vnepos);
+            break;
+          case 4:
+            //! Constant bearing tracking.
+            if (m_estimate_received){
+              double x_tilde = m_nepos.x - m_vnepos.x;
+              double y_tilde = m_nepos.y - m_vnepos.y;
+              double kappa = m_os.sog/(std::sqrt(x_tilde*x_tilde + y_tilde*y_tilde+m_args.Delta*m_args.Delta));
+              psid = std::atan2(-kappa*y_tilde + m_vy, -kappa*x_tilde + m_vx);
+
+              //! Ensure that the obstacle cannot block the target for ever.
+              //! If it comes close enough, we stop the vehicle tracking.
+              if (Math::norm(m_nepos.x-m_args.target[0], m_nepos.y-m_args.target[1]) <= m_args.d_lim)
+                m_tracking_done = true;
+            }
+            break;
+        }
+
+        //! Heading rate.
+        double r = m_tracking_done ? 0.0 : Angles::minSignedAngle(m_os.cog, psid);
+
         //! Update longitude and latitude.
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
         m_r = std::max(std::min(r,m_args.r_max), -m_args.r_max);
@@ -328,7 +394,7 @@ namespace Simulators
         m_os.sog = std::max(std::min(u, m_args.u_max), 0.0);
         m_os.cog = Angles::normalizeRadian(m_os.cog);
 
-        //! Update vertices.
+        //! Update vertices accordingly.
         if (m_args.shape_enabled){
 
           int i = 0;
@@ -354,13 +420,6 @@ namespace Simulators
       {
         //! Send the state of the obstacle regularly.
         if (m_in_maneuver){
-
-            m_desired_heading = Angles::radians(45.0);
-
-            if ( Clock::get() - m_maneuver_start > 15.0 ){
-              m_desired_heading = Angles::radians(90.0);
-            }
-
            sendState();
         }
       }
