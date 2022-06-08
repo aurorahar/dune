@@ -32,7 +32,6 @@
 
 namespace Development
 {
-  //! @author Aurorahar
   namespace SendCommand
   {
     using DUNE_NAMESPACES;

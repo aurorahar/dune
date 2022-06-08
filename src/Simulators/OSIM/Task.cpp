@@ -73,6 +73,7 @@ namespace Simulators
       //! Obstacle state and polygon to be sent.
       IMC::Target m_os;
       IMC::MapFeature m_polygon;
+      IMC::EstimatedState m_es;
 
       //! North East position and heading rate.
       Point m_nepos;
@@ -86,8 +87,9 @@ namespace Simulators
       //! File for saving the data.
       std::ofstream m_data_file;
       bool m_in_maneuver;
-      double m_stop_time;
       bool m_timer_on;
+      double m_stop_time;
+      const double c_time_thresh = 5.0;
 
       //! Vehicle state for target tracking.
       bool m_estimate_received;
@@ -95,11 +97,7 @@ namespace Simulators
       double m_vx;
       double m_vy;
 
-      const double c_time_thresh = 5.0;
 
-      //! Constructor.
-      //! @param[in] name task name.
-      //! @param[in] ctx context.
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
@@ -162,7 +160,7 @@ namespace Simulators
         .defaultValue("0");
 
         param("Turn At Time", m_args.turn_time)
-        .defaultValue("15.0")
+        .defaultValue("20.0")
         .units(Units::Second);
 
         param("Target Position", m_args.target)
@@ -197,6 +195,16 @@ namespace Simulators
         m_os.cog = Math::Angles::radians(m_args.heading);
         m_os.sog = m_args.speed;
         m_os.label = "ObstacleState";
+
+        //! EstimatedState message for Neptus
+        m_es.lat = Math::Angles::radians(m_args.position[0]);
+        m_es.lon = Math::Angles::radians(m_args.position[1]);
+        m_es.x = m_nepos.x;
+        m_es.y = m_nepos.y;
+        m_es.psi = m_os.cog;
+        m_es.u = m_os.sog;
+        
+        m_es.setSource(0x001F);
 
         if (m_args.shape_enabled){
 
@@ -324,7 +332,6 @@ namespace Simulators
         //! Vehicle ground speed for constant bearing guidance.
         m_vx = msg->u*std::cos(msg->psi)-msg->v*std::sin(msg->psi);
         m_vy = msg->u*std::sin(msg->psi)+msg->v*std::cos(msg->psi);
-
       }
 
       //! Sends the state of the obstacle.
@@ -413,6 +420,13 @@ namespace Simulators
           dispatch(m_polygon);
         }
         dispatch(m_os);
+
+        //! EstimatedState message for Neptus
+        m_es.x = m_nepos.x;
+        m_es.y = m_nepos.y;
+        m_es.psi = m_os.cog;
+        m_es.u = m_os.sog;
+        dispatch(m_es);
       }
 
       void
