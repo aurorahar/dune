@@ -71,7 +71,7 @@ namespace Control
         IMC::Target m_ob;     // Obstacle state
         Point m_ooffsett;     // NE offset
         double m_or;          // Estimated heading rate
-        double m_ts;
+        double m_ts;          //! Time step
         bool m_os_received;
 
         //! List to save the polygon vertices.
@@ -151,10 +151,8 @@ namespace Control
             m_os_received = true;
             m_or = 0.0;
           }
-          else{
+          else
             m_or = (msg->cog-m_ob.cog)/(m_ts);
-          }
-
 
           m_ob = *msg;
         }

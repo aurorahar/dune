@@ -75,7 +75,7 @@ namespace Simulators
       IMC::MapFeature m_polygon;
       IMC::EstimatedState m_es;
 
-      //! North East position and heading rate.
+      //! Obstacle North East position and heading rate.
       Point m_nepos;
       double m_r;
       double m_maneuver_start;
@@ -91,13 +91,11 @@ namespace Simulators
       double m_stop_time;
       const double c_time_thresh = 5.0;
 
-      //! Vehicle state for target tracking.
+      //! Vehicle state.
       bool m_estimate_received;
       Point m_vnepos;
       double m_vx;
       double m_vy;
-
-
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
@@ -172,9 +170,7 @@ namespace Simulators
         .defaultValue("30.0")
         .units(Units::Meter);
 
-        //! Change this to estimated state during experiments, or remove entirely
-        //! if we save the data other ways.
-        bind<IMC::SimulatedState>(this);
+        bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
       }
 
@@ -196,14 +192,14 @@ namespace Simulators
         m_os.sog = m_args.speed;
         m_os.label = "ObstacleState";
 
-        //! EstimatedState message for Neptus
+        //! Message for Neptus
         m_es.lat = Math::Angles::radians(m_args.position[0]);
         m_es.lon = Math::Angles::radians(m_args.position[1]);
         m_es.x = m_nepos.x;
         m_es.y = m_nepos.y;
         m_es.psi = m_os.cog;
         m_es.u = m_os.sog;
-        
+
         m_es.setSource(0x001F);
 
         if (m_args.shape_enabled){
@@ -312,7 +308,7 @@ namespace Simulators
 
 
       void
-      consume(const IMC::SimulatedState * msg){
+      consume(const IMC::EstimatedState * msg){
 
         if (m_in_maneuver && m_data_file.is_open()){
 
@@ -329,9 +325,10 @@ namespace Simulators
         //! Vehicle position for target tracking.
         m_vnepos.x = msg->x;
         m_vnepos.y = msg->y;
+
         //! Vehicle ground speed for constant bearing guidance.
-        m_vx = msg->u*std::cos(msg->psi)-msg->v*std::sin(msg->psi);
-        m_vy = msg->u*std::sin(msg->psi)+msg->v*std::cos(msg->psi);
+        m_vx = msg->vx;
+        m_vy = msg->vy;
       }
 
       //! Sends the state of the obstacle.
@@ -346,7 +343,7 @@ namespace Simulators
         m_nepos.y += e;
 
         //! Heading rate and acceleration of the obstacle.
-        //! The mode decides what the obstacle should do.
+        //! The mode determines what the obstacle should do.
 
         double a = m_args.a_max;
         double psid = Angles::radians(m_args.heading);
@@ -401,7 +398,7 @@ namespace Simulators
         m_os.sog = std::max(std::min(u, m_args.u_max), 0.0);
         m_os.cog = Angles::normalizeRadian(m_os.cog);
 
-        //! Update vertices accordingly.
+        //! Update vertices according to center position.
         if (m_args.shape_enabled){
 
           int i = 0;
@@ -421,7 +418,7 @@ namespace Simulators
         }
         dispatch(m_os);
 
-        //! EstimatedState message for Neptus
+        //! Message for Neptus
         m_es.x = m_nepos.x;
         m_es.y = m_nepos.y;
         m_es.psi = m_os.cog;
