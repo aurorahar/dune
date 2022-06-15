@@ -45,14 +45,11 @@ namespace Simulators
       std::vector<double> position;
       std::vector<double> offset;
       std::vector<double> vertices;
-      std::vector<double> target;
       double heading;
       double speed;
       double r_max;
       double a_max;
       double u_max;
-      double d_lim;
-      double Delta;
       double turn_time;
       bool save_data;
       bool shape_enabled;
@@ -79,7 +76,6 @@ namespace Simulators
       Point m_nepos;
       double m_r;
       double m_maneuver_start;
-      bool m_tracking_done;
 
       //! Step size of numerical integration.
       double c_ts;
@@ -94,23 +90,16 @@ namespace Simulators
       //! Vehicle state.
       bool m_estimate_received;
       Point m_vnepos;
-      double m_vx;
-      double m_vy;
+      double m_ref_position[2];
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_in_maneuver(false),
         m_estimate_received(false),
-        m_timer_on(false),
-        m_tracking_done(false)
+        m_timer_on(false)
       {
-        param("Position", m_args.position)
-        .description("Position of the reference origin. ")
-        .size(2)
-        .units(Units::Degree);
-
         param("Offset", m_args.offset)
-        .description("Offset of the obstacle position relative to the origin.")
+        .description("Offset of the obstacle position relative to vehicle start position.")
         .size(2)
         .units(Units::Meter);
 
@@ -151,24 +140,12 @@ namespace Simulators
         param("Number of Vertices", m_args.n_vertices)
         .defaultValue("0");
 
-        param("Constant Bearing Delta", m_args.Delta)
-        .defaultValue("1.0");
-
         param("Mode", m_args.mode)
         .defaultValue("0");
 
         param("Turn At Time", m_args.turn_time)
         .defaultValue("20.0")
         .units(Units::Second);
-
-        param("Target Position", m_args.target)
-        .size(2)
-        .defaultValue("110.0, 0.0")
-        .units(Units::Meter);
-
-        param("Tracking Limit", m_args.d_lim)
-        .defaultValue("30.0")
-        .units(Units::Meter);
 
         bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
@@ -181,49 +158,6 @@ namespace Simulators
         //! Set time step according to the execution frequency.
         c_ts = 1.0/getFrequency();
         m_stop_time = Clock::get();
-
-        //! Initialize obstacle states.
-        m_os.lat = Math::Angles::radians(m_args.position[0]);
-        m_os.lon = Math::Angles::radians(m_args.position[1]);
-        m_nepos.x = m_args.offset[0];
-        m_nepos.y = m_args.offset[1];
-        WGS84::displace(m_nepos.x, m_nepos.y,  &m_os.lat, &m_os.lon);
-        m_os.cog = Math::Angles::radians(m_args.heading);
-        m_os.sog = m_args.speed;
-        m_os.label = "ObstacleState";
-
-        //! Message for Neptus
-        m_es.lat = Math::Angles::radians(m_args.position[0]);
-        m_es.lon = Math::Angles::radians(m_args.position[1]);
-        m_es.x = m_nepos.x;
-        m_es.y = m_nepos.y;
-        m_es.psi = m_os.cog;
-        m_es.u = m_os.sog;
-
-        m_es.setSource(0x001F);
-
-        if (m_args.shape_enabled){
-
-          //! Initialize polygon.
-
-          m_polygon.id = "ObstaclePolygon";
-          m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
-
-          double dx, dy;
-
-          for (int i = 0; i < m_args.n_vertices; i++)
-          {
-            IMC::MapPoint map_point;
-            map_point.lat = m_os.lat;
-            map_point.lon = m_os.lon;
-
-            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
-
-            m_polygon.feature.push_back(map_point);
-          }
-        }
       }
 
       //! Reserve entity identifiers.
@@ -305,7 +239,53 @@ namespace Simulators
           }
         }
       }
+      void onInitializeObstacle(double lat, double lon){
+        m_ref_position[0] = lat;
+        m_ref_position[1] = lon;
 
+        //! Initialize obstacle states.
+        m_os.lat = lat;
+        m_os.lon = lon;
+        m_nepos.x = m_args.offset[0];
+        m_nepos.y = m_args.offset[1];
+        WGS84::displace(m_nepos.x, m_nepos.y,  &m_os.lat, &m_os.lon);
+        m_os.cog = Math::Angles::radians(m_args.heading);
+        m_os.sog = m_args.speed;
+        m_os.label = "ObstacleState";
+
+        //! Message for Neptus
+        m_es.lat = lat;
+        m_es.lon = lon;
+        m_es.x = m_nepos.x;
+        m_es.y = m_nepos.y;
+        m_es.psi = m_os.cog;
+        m_es.u = m_os.sog;
+
+        m_es.setSource(0x001F); //xp2
+
+        if (m_args.shape_enabled){
+
+          //! Initialize polygon.
+
+          m_polygon.id = "ObstaclePolygon";
+          m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
+
+          double dx, dy;
+
+          for (int i = 0; i < m_args.n_vertices; i++)
+          {
+            IMC::MapPoint map_point;
+            map_point.lat = m_os.lat;
+            map_point.lon = m_os.lon;
+
+            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
+
+            m_polygon.feature.push_back(map_point);
+          }
+        }
+      }
 
       void
       consume(const IMC::EstimatedState * msg){
@@ -319,16 +299,15 @@ namespace Simulators
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
           << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
         }
-        if (!m_estimate_received)
+        if (!m_estimate_received){
           m_estimate_received = true;
+          //! Initialize the obstacle position based on the lat/lon coordinates of the vehicle.
+          onInitializeObstacle(msg->lat, msg->lon);
+        }
 
         //! Vehicle position for target tracking.
         m_vnepos.x = msg->x;
         m_vnepos.y = msg->y;
-
-        //! Vehicle ground speed for constant bearing guidance.
-        m_vx = msg->vx;
-        m_vy = msg->vy;
       }
 
       //! Sends the state of the obstacle.
@@ -346,7 +325,7 @@ namespace Simulators
         //! The mode determines what the obstacle should do.
 
         double a = m_args.a_max;
-        double psid = Angles::radians(m_args.heading);
+        double psid = m_os.cog;
 
         switch(m_args.mode){
           case 0:
@@ -366,27 +345,12 @@ namespace Simulators
             break;
           case 3:
             //! Pure pursuit tracking.
-            if (m_estimate_received)
-              psid = Coordinates::getBearing(m_nepos, m_vnepos);
-            break;
-          case 4:
-            //! Constant bearing tracking.
-            if (m_estimate_received){
-              double x_tilde = m_nepos.x - m_vnepos.x;
-              double y_tilde = m_nepos.y - m_vnepos.y;
-              double kappa = m_os.sog/(std::sqrt(x_tilde*x_tilde + y_tilde*y_tilde+m_args.Delta*m_args.Delta));
-              psid = std::atan2(-kappa*y_tilde + m_vy, -kappa*x_tilde + m_vx);
-
-              //! Ensure that the obstacle cannot block the target for ever.
-              //! If it comes close enough, we stop the vehicle tracking.
-              if (Math::norm(m_nepos.x-m_args.target[0], m_nepos.y-m_args.target[1]) <= m_args.d_lim)
-                m_tracking_done = true;
-            }
+            psid = Coordinates::getBearing(m_nepos, m_vnepos);
             break;
         }
 
-        //! Heading rate.
-        double r = m_tracking_done ? 0.0 : Angles::minSignedAngle(m_os.cog, psid);
+        //! Compute heading rate.
+        double r = Angles::minSignedAngle(m_os.cog, psid);
 
         //! Update longitude and latitude.
         WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
@@ -405,8 +369,8 @@ namespace Simulators
 
           for (IMC::MapPoint * p : m_polygon.feature)
           {
-            p->lat = Math::Angles::radians(m_args.position[0]);
-            p->lon = Math::Angles::radians(m_args.position[1]);
+            p->lat =m_ref_position[0];
+            p->lon =m_ref_position[1];
 
             double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
             double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
@@ -423,14 +387,15 @@ namespace Simulators
         m_es.y = m_nepos.y;
         m_es.psi = m_os.cog;
         m_es.u = m_os.sog;
-        dispatch(m_es);
+      //  dispatch(m_es);
       }
 
       void
       task(void)
       {
-        //! Send the state of the obstacle regularly.
-        if (m_in_maneuver){
+        //! Send the state of the obstacle regularly, but only if the vehicle
+        //! is in a maneuver and we have received the lat/lon coordinates.
+        if (m_in_maneuver && m_estimate_received){
            sendState();
         }
       }

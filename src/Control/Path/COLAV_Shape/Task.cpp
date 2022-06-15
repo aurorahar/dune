@@ -97,15 +97,16 @@ namespace Control
           .units(Units::Degree);
           param("Measurement Frequency", m_args.frequency)
           .description("Frequency at which the obstacle state is sent.")
-          .defaultValue("10.0");
+          .defaultValue("100.0");
           param("Distance Margin", m_args.d_margin)
-          .defaultValue("0.1")
+          .description("Threshold value when checking if the distance is close to the safety distance.")
+          .defaultValue("0.5")
           .units(Units::Meter);
           param("Weight", m_args.weight)
           .description("Weighting factor for choosing maneuver direction.")
           .defaultValue("0.5");
           param("Path Following", m_args.follow_path)
-          .description("Activate LOS path following.")
+          .description("Activates LOS path following.")
           .defaultValue("false");
           param("Look Ahead Distance", m_args.los_Delta)
           .defaultValue("5.0");
@@ -315,11 +316,14 @@ namespace Control
           m_heading.value = m_args.follow_path ? ts.track_bearing + std::atan2(-ts.track_pos.y,m_args.los_Delta) : ts.los_angle;
 
           if (m_os_received){
+
             //! Check if we need to avoid a collision.
             shouldCA(state, m_heading.value);
+
             if ( m_ca_active )
               m_heading.value = m_coll_cone[m_turn_dir];
           }
+
           //! If we are controlling the course, compensate for the crab angle.
           if ( ts.cc )
             m_heading.value = Angles::normalizeRadian(m_heading.value + state.psi - ts.course);
