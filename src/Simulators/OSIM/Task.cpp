@@ -52,7 +52,6 @@ namespace Simulators
       double u_max;
       double turn_time;
       bool save_data;
-      bool shape_enabled;
       int n_vertices;
       int mode;
     };
@@ -131,14 +130,11 @@ namespace Simulators
         param("Save Data", m_args.save_data)
         .defaultValue("false");
 
-        param("Enable Shape", m_args.shape_enabled)
-        .defaultValue("false");
-
         param("Vertex Placements", m_args.vertices)
         .description("Position of the polygon vertices with respect to the center.");
 
         param("Number of Vertices", m_args.n_vertices)
-        .defaultValue("0");
+        .defaultValue("1");
 
         param("Mode", m_args.mode)
         .defaultValue("0");
@@ -236,9 +232,11 @@ namespace Simulators
 
             m_in_maneuver = false;
             m_timer_on = false;
+            m_estimate_received = false;
           }
         }
       }
+
       void onInitializeObstacle(double lat, double lon){
         m_ref_position[0] = lat;
         m_ref_position[1] = lon;
@@ -263,27 +261,23 @@ namespace Simulators
 
         m_es.setSource(0x001F); //xp2
 
-        if (m_args.shape_enabled){
+        //! Initialize polygon.
+        m_polygon.id = "ObstaclePolygon";
+        m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
 
-          //! Initialize polygon.
+        double dx, dy;
 
-          m_polygon.id = "ObstaclePolygon";
-          m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
+        for (int i = 0; i < m_args.n_vertices; i++)
+        {
+          IMC::MapPoint map_point;
+          map_point.lat = m_os.lat;
+          map_point.lon = m_os.lon;
 
-          double dx, dy;
+          dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+          dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+          WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
 
-          for (int i = 0; i < m_args.n_vertices; i++)
-          {
-            IMC::MapPoint map_point;
-            map_point.lat = m_os.lat;
-            map_point.lon = m_os.lon;
-
-            dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-            dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
-
-            m_polygon.feature.push_back(map_point);
-          }
+          m_polygon.feature.push_back(map_point);
         }
       }
 
@@ -294,16 +288,22 @@ namespace Simulators
 
           //! Write data to file if we are in a maneuver.
           //! We save both the obstacle and vehicle state.
+          if (m_in_maneuver && !m_estimate_received){
+            m_estimate_received = true;
+
+            //! Initialize the obstacle position based on the lat/lon coordinates of the vehicle.
+            double lat = msg->lat;
+            double lon = msg->lon;
+            WGS84::displace(msg->x, msg->y,  &lat, &lon);
+
+            onInitializeObstacle(lat,lon);
+          }
 
           m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
           << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
           << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
         }
-        if (!m_estimate_received){
-          m_estimate_received = true;
-          //! Initialize the obstacle position based on the lat/lon coordinates of the vehicle.
-          onInitializeObstacle(msg->lat, msg->lon);
-        }
+
 
         //! Vehicle position for target tracking.
         m_vnepos.x = msg->x;
@@ -363,23 +363,22 @@ namespace Simulators
         m_os.cog = Angles::normalizeRadian(m_os.cog);
 
         //! Update vertices according to center position.
-        if (m_args.shape_enabled){
+        int i = 0;
 
-          int i = 0;
+        for (IMC::MapPoint * p : m_polygon.feature)
+        {
+          p->lat =m_ref_position[0];
+          p->lon =m_ref_position[1];
 
-          for (IMC::MapPoint * p : m_polygon.feature)
-          {
-            p->lat =m_ref_position[0];
-            p->lon =m_ref_position[1];
+          double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+          double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
 
-            double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
-            double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
-
-            WGS84::displace(dx, dy,  &p->lat, &p->lon);
-            i++;
-          }
-          dispatch(m_polygon);
+          WGS84::displace(dx, dy,  &p->lat, &p->lon);
+          i++;
         }
+
+        //! Send the messages
+        dispatch(m_polygon);
         dispatch(m_os);
 
         //! Message for Neptus
@@ -387,7 +386,7 @@ namespace Simulators
         m_es.y = m_nepos.y;
         m_es.psi = m_os.cog;
         m_es.u = m_os.sog;
-      //  dispatch(m_es);
+        dispatch(m_es);
       }
 
       void
