@@ -93,7 +93,7 @@ namespace Control
           .units(Units::Meter);
           param("Safety Angle", m_args.asafe)
           .description("Safety angle by which we extend the collision cone.")
-          .defaultValue("10.0")
+          .defaultValue("25.0")
           .units(Units::Degree);
           param("Measurement Frequency", m_args.frequency)
           .description("Frequency at which the obstacle state is sent.")
@@ -118,7 +118,6 @@ namespace Control
         onUpdateParameters(void)
         {
           m_ts = 1.0/m_args.frequency;
-          m_args.asafe = Angles::radians(m_args.asafe);
           PathController::onUpdateParameters();
         }
 
@@ -204,6 +203,7 @@ namespace Control
           double speed = Math::norm(vs.u, vs.v);
           Point p;
 
+
           for (IMC::MapPoint * map_p : m_vertices){
 
             Coordinates::WGS84::displacement(vs.lat, vs.lon, vs.height, map_p->lat, map_p->lon, vs.height, &p.x, &p.y);
@@ -214,8 +214,8 @@ namespace Control
 
             Coordinates::getBearingAndRange(vs, p, &alpha, &d);
             double beta = d >= m_args.dsep ? std::asin(m_args.dsep/d) : c_pi-std::asin(d/m_args.dsep);
-            double ang_m = compAngle(alpha - beta - m_args.asafe, vx, vy, speed);
-            double ang_p = compAngle(alpha + beta + m_args.asafe, vx, vy, speed);
+            double ang_m = compAngle(alpha - beta - Angles::radians(m_args.asafe), vx, vy, speed);
+            double ang_p = compAngle(alpha + beta + Angles::radians(m_args.asafe), vx, vy, speed);
 
             //! Feasibility check.
             if ( std::max(std::abs(ang_m),std::abs(ang_p)) > 1 ){
@@ -227,14 +227,14 @@ namespace Control
 
             double rot_angle;
 
-            if ((rot_angle = Angles::normalizeRadian(alpha-m_alpha_min)-beta-m_args.asafe + std::asin(ang_m)) < min_angle){
+            if ((rot_angle = Angles::normalizeRadian(alpha-m_alpha_min)-beta-Angles::radians(m_args.asafe) + std::asin(ang_m)) < min_angle){
               min_angle = rot_angle;
-              m_coll_cone[0] = mapAngle(alpha - beta - m_args.asafe + std::asin(ang_m));
+              m_coll_cone[0] = mapAngle(alpha - beta - Angles::radians(m_args.asafe) + std::asin(ang_m));
             }
 
-            if ((rot_angle = Angles::normalizeRadian(alpha-m_alpha_min)+beta+m_args.asafe + std::asin(ang_p)) > max_angle){
+            if ((rot_angle = Angles::normalizeRadian(alpha-m_alpha_min)+beta+Angles::radians(m_args.asafe) + std::asin(ang_p)) > max_angle){
               max_angle = rot_angle;
-              m_coll_cone[1] = mapAngle(alpha + beta + m_args.asafe + std::asin(ang_p));
+              m_coll_cone[1] = mapAngle(alpha + beta + Angles::radians(m_args.asafe) + std::asin(ang_p));
             }
           }
         }
@@ -268,7 +268,6 @@ namespace Control
           // ! one, we choose the turning direction.
 
           if ( m_d_min <= m_args.dsafe || m_ca_active ){
-
             compColCone(vs);
 
             if ( m_wait_for_speed ){
@@ -285,6 +284,7 @@ namespace Control
               //! Here we choose turning direction.
               if ( !m_ca_active ){
                 if ( m_args.dsafe-m_d_min < m_args.d_margin ){
+
                   int closest = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
                   int behind =  std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[0])) >= std::abs(Angles::minSignedAngle(m_ob.cog,m_coll_cone[1])) ? 0 : 1;
 

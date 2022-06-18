@@ -52,8 +52,10 @@ namespace Simulators
       double u_max;
       double turn_time;
       bool save_data;
+      bool active;
       int n_vertices;
       int mode;
+      uint16_t source;
     };
 
     struct Point{
@@ -88,8 +90,6 @@ namespace Simulators
 
       //! Vehicle state.
       bool m_estimate_received;
-      Point m_vnepos;
-      double m_ref_position[2];
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
@@ -131,17 +131,29 @@ namespace Simulators
         .defaultValue("false");
 
         param("Vertex Placements", m_args.vertices)
-        .description("Position of the polygon vertices with respect to the center.");
+        .description("Position of the polygon vertices with respect to the center.")
+        .defaultValue("0.0, 0.0");
 
         param("Number of Vertices", m_args.n_vertices)
+        .description("Number of vertices in the obstacle polygon.")
         .defaultValue("1");
 
         param("Mode", m_args.mode)
+        .description("Sets the behaviour of the obstacle. ")
         .defaultValue("0");
 
         param("Turn At Time", m_args.turn_time)
+        .description("Time after simulation start the obstacle should take a turn.")
         .defaultValue("20.0")
         .units(Units::Second);
+
+        param("Activated", m_args.active)
+        .description("Activates the obstacle simulation.")
+        .defaultValue("false");
+
+        param("Source id", m_args.source)
+        .description("Source id for sending the obstacle coordinates to Neptus.")
+        .defaultValue("0x001F");
 
         bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
@@ -193,53 +205,58 @@ namespace Simulators
 
       void
       consume (const IMC::VehicleState* msg){
+        if ( m_args.active ) {
 
-        if (msg->op_mode == IMC::VehicleState::VS_MANEUVER){
+          if (msg->op_mode == IMC::VehicleState::VS_MANEUVER){
 
-          //! Check if the maneuvering flag is set and if we need to start saving the data.
-          if (!m_in_maneuver && m_args.save_data){
+            //! Check if the maneuvering flag is set and if we need to start saving the data.
+            if (!m_in_maneuver){
 
-            //! Get date and time for naming the file.
-            std::string timestr = Format::getTimeDate();
+              m_maneuver_start = Clock::get();
 
-            //! Remove illegal characters, year and seconds.
-            std::string name = timestr.substr(5,2)+timestr.substr(8,2)+timestr.substr(11,2)+timestr.substr(14,2);
+                if ( m_args.save_data ){
 
-            //! Open the file in the designated MATLAB folder.
-            m_data_file.open("../../MATLAB/DUNE_Experiments/log/"+ name +".txt");
+                //! Get date and time for naming the file.
+                std::string timestr = Format::getTimeDate();
 
-            //! Confirm that we made the file.
-            if (!m_data_file)
-              inf("Cannot open file.");
-            else{
-              inf("Generated file %s to write.", name.c_str());
-            }
-            m_maneuver_start = Clock::get();
-          }
-          m_in_maneuver = true;
-        }else{
+                //! Remove illegal characters, year and seconds.
+                std::string name = timestr.substr(5,2)+timestr.substr(8,2)+timestr.substr(11,2)+timestr.substr(14,2);
 
-          if (m_in_maneuver && !m_timer_on){
-            m_stop_time = Clock::get();
-            m_timer_on = true;
-          }
-          //! Wait a few seconds before closing the file.
-          if (m_timer_on && Clock::get()- m_stop_time > c_time_thresh){
-            if (m_data_file.is_open()){
-              inf("Closing file.");
-              m_data_file.close();
+                //! Open the file in the designated MATLAB folder.
+                m_data_file.open("../../MATLAB/DUNE_Experiments/log/"+ name +".txt");
+
+                //! Confirm that we made the file.
+                if (!m_data_file)
+                  inf("Cannot open file.");
+                else{
+                  inf("Generated file %s to write.", name.c_str());
+                }
+
               }
+            }
+            m_in_maneuver = true;
+          }else{
 
-            m_in_maneuver = false;
-            m_timer_on = false;
-            m_estimate_received = false;
+            if (m_in_maneuver && !m_timer_on){
+              m_stop_time = Clock::get();
+              m_timer_on = true;
+            }
+            //! Wait a few seconds before closing the file.
+            if (m_timer_on && Clock::get()- m_stop_time > c_time_thresh){
+              if (m_data_file.is_open()){
+                inf("Closing file.");
+                m_data_file.close();
+                }
+
+              m_in_maneuver = false;
+              m_timer_on = false;
+              m_estimate_received = false;
+            }
           }
         }
       }
 
       void onInitializeObstacle(double lat, double lon){
-        m_ref_position[0] = lat;
-        m_ref_position[1] = lon;
 
         //! Initialize obstacle states.
         m_os.lat = lat;
@@ -259,7 +276,7 @@ namespace Simulators
         m_es.psi = m_os.cog;
         m_es.u = m_os.sog;
 
-        m_es.setSource(0x001F); //xp2
+        m_es.setSource(m_args.source);
 
         //! Initialize polygon.
         m_polygon.id = "ObstaclePolygon";
@@ -273,8 +290,8 @@ namespace Simulators
           map_point.lat = m_os.lat;
           map_point.lon = m_os.lon;
 
-          dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-          dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+          dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
+          dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
           WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
 
           m_polygon.feature.push_back(map_point);
@@ -283,31 +300,30 @@ namespace Simulators
 
       void
       consume(const IMC::EstimatedState * msg){
+        if ( m_args.active ) {
 
-        if (m_in_maneuver && m_data_file.is_open()){
-
-          //! Write data to file if we are in a maneuver.
-          //! We save both the obstacle and vehicle state.
           if (m_in_maneuver && !m_estimate_received){
             m_estimate_received = true;
 
             //! Initialize the obstacle position based on the lat/lon coordinates of the vehicle.
             double lat = msg->lat;
             double lon = msg->lon;
+
             WGS84::displace(msg->x, msg->y,  &lat, &lon);
 
             onInitializeObstacle(lat,lon);
           }
 
-          m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
-          << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
-          << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
+          if (m_in_maneuver && m_data_file.is_open()){
+
+            //! Write data to file if we are in a maneuver.
+            //! We save both the obstacle and vehicle state.
+
+            m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
+            << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
+            << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
+          }
         }
-
-
-        //! Vehicle position for target tracking.
-        m_vnepos.x = msg->x;
-        m_vnepos.y = msg->y;
       }
 
       //! Sends the state of the obstacle.
@@ -320,6 +336,9 @@ namespace Simulators
         double e = m_os.sog*std::sin(m_os.cog)*c_ts;
         m_nepos.x += n;
         m_nepos.y += e;
+
+        //! Update longitude and latitude.
+        WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
 
         //! Heading rate and acceleration of the obstacle.
         //! The mode determines what the obstacle should do.
@@ -334,7 +353,7 @@ namespace Simulators
           case 1:
             //! Right turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
-              psid = Angles::radians(m_args.heading+90.0);
+              psid = Angles::radians(m_args.heading + 90.0);
             }
             break;
           case 2:
@@ -344,16 +363,21 @@ namespace Simulators
             }
             break;
           case 3:
-            //! Pure pursuit tracking.
-            psid = Coordinates::getBearing(m_nepos, m_vnepos);
+            //! Half right turn.
+            if (Clock::get()-m_maneuver_start > m_args.turn_time){
+                psid = Angles::radians(m_args.heading + 45.0);
+            }
+            break;
+          case 5:
+           //! Half left turn.
+            if (Clock::get()-m_maneuver_start > m_args.turn_time){
+                psid = Angles::radians(m_args.heading - 45.0);
+            }
             break;
         }
 
         //! Compute heading rate.
         double r = Angles::minSignedAngle(m_os.cog, psid);
-
-        //! Update longitude and latitude.
-        WGS84::displace(n, e,  &m_os.lat, &m_os.lon);
         m_r = std::max(std::min(r,m_args.r_max), -m_args.r_max);
         m_os.cog += m_r*c_ts;
         double u = m_os.sog+std::max(std::min(a,m_args.a_max), -m_args.a_max)*c_ts;
@@ -367,11 +391,11 @@ namespace Simulators
 
         for (IMC::MapPoint * p : m_polygon.feature)
         {
-          p->lat =m_ref_position[0];
-          p->lon =m_ref_position[1];
+          p->lat =m_os.lat;
+          p->lon =m_os.lon;
 
-          double dx = m_nepos.x + m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
-          double dy = m_nepos.y + m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+          double dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+          double dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
 
           WGS84::displace(dx, dy,  &p->lat, &p->lon);
           i++;
@@ -392,10 +416,14 @@ namespace Simulators
       void
       task(void)
       {
-        //! Send the state of the obstacle regularly, but only if the vehicle
-        //! is in a maneuver and we have received the lat/lon coordinates.
-        if (m_in_maneuver && m_estimate_received){
-           sendState();
+        if (m_args.active) {
+
+          //! Send the state of the obstacle regularly, but only if the vehicle
+          //! is in a maneuver and we have received the lat/lon coordinates.
+          if (m_in_maneuver && m_estimate_received){
+             sendState();
+          }
+
         }
       }
     };
