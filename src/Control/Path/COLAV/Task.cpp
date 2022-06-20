@@ -72,7 +72,9 @@ namespace Control
         Point m_ooffsett;     // NE offset
         double m_or;          // Estimated heading rate
         double m_ts;          //! Time step
-        bool m_os_received;
+        double m_time_last_received;    //! Time the last update was received
+        bool m_os_received;             //! If we have valid obstacle measurements
+        const double c_timeout = 5.0;
 
         //! List to save the polygon vertices.
         IMC::MessageList<IMC::MapPoint> m_vertices;
@@ -81,7 +83,8 @@ namespace Control
           DUNE::Control::PathController(name, ctx),
           m_os_received(false),
           m_ca_active(false),
-          m_wait_for_speed(false)
+          m_wait_for_speed(false),
+          m_time_last_received(-1.0)
         {
           param("Separation Distance", m_args.dsep)
           .description("Minimum distance the vehicle should keep to the obstacle.")
@@ -96,7 +99,7 @@ namespace Control
           .defaultValue("25.0")
           .units(Units::Degree);
           param("Measurement Frequency", m_args.frequency)
-          .description("Frequency at which the obstacle state is sent.")
+          .description("Frequency at which the obstacle state is updated.")
           .defaultValue("100.0");
           param("Distance Margin", m_args.d_margin)
           .description("Threshold value when checking if the distance is close to the safety distance.")
@@ -108,7 +111,7 @@ namespace Control
           param("Path Following", m_args.follow_path)
           .defaultValue("false");
           param("Look Ahead Distance", m_args.los_Delta)
-          .defaultValue("5.0");
+          .defaultValue("10.0");
 
           bind<IMC::Target>(this);
           bind<IMC::MapFeature>(this);
@@ -153,6 +156,8 @@ namespace Control
           else
             m_or = (msg->cog-m_ob.cog)/(m_ts);
 
+
+          m_time_last_received = Clock::get();
           m_ob = *msg;
         }
 
@@ -213,11 +218,13 @@ namespace Control
             double vy = m_ob.sog*std::sin(m_ob.cog) + m_or*d*std::cos(phi);
 
             Coordinates::getBearingAndRange(vs, p, &alpha, &d);
+
             double beta = d >= m_args.dsep ? std::asin(m_args.dsep/d) : c_pi-std::asin(d/m_args.dsep);
             double ang_m = compAngle(alpha - beta - Angles::radians(m_args.asafe), vx, vy, speed);
             double ang_p = compAngle(alpha + beta + Angles::radians(m_args.asafe), vx, vy, speed);
 
             //! Feasibility check.
+
             if ( std::max(std::abs(ang_m),std::abs(ang_p)) > 1 ){
               debug("Cannot compute velocity compensation term -- speed too low.");
               m_wait_for_speed = true;
@@ -281,7 +288,11 @@ namespace Control
             double cone_rot = mapAngle(m_coll_cone[1] - m_coll_cone[0]);
 
             if ( direction_rot < cone_rot ) {
-              //! Here we choose turning direction.
+
+              //! Here we choose turning direction. We use a weighting factor to choose between the
+              //! course that will take the vehicle behind the obstacle and the course that is closest to
+              //! the current course angle.
+
               if ( !m_ca_active ){
                 if ( m_args.dsafe-m_d_min < m_args.d_margin ){
 
@@ -313,6 +324,10 @@ namespace Control
         step(const IMC::EstimatedState & state, const TrackingState& ts)
         {
           m_heading.value = m_args.follow_path ? ts.track_bearing + std::atan2(-ts.track_pos.y,m_args.los_Delta) : ts.los_angle;
+
+          if (m_os_received && Clock::get()- m_time_last_received >= c_timeout){
+            m_os_received = false; // If we haven't received any updates in 5 seconds, the current obstacle measurements are not valid
+          }
 
           if (m_os_received){
 
