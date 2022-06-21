@@ -51,7 +51,6 @@ namespace Simulators
       double a_max;
       double u_max;
       double turn_time;
-      bool save_data;
       bool active;
       int n_vertices;
       int mode;
@@ -81,21 +80,15 @@ namespace Simulators
       //! Step size of numerical integration.
       double c_ts;
 
-      //! File for saving the data.
-      std::ofstream m_data_file;
-      bool m_in_maneuver;
-      bool m_timer_on;
-      double m_stop_time;
-      const double c_time_thresh = 5.0;
-
       //! Vehicle state.
       bool m_estimate_received;
+      bool m_in_maneuver;
+
 
       Task(const std::string& name, Tasks::Context& ctx):
         DUNE::Tasks::Periodic(name, ctx),
         m_in_maneuver(false),
-        m_estimate_received(false),
-        m_timer_on(false)
+        m_estimate_received(false)
       {
         param("Offset", m_args.offset)
         .description("Offset of the obstacle position relative to vehicle start position.")
@@ -126,9 +119,6 @@ namespace Simulators
         .description("Maximum obstacle acceleration.")
         .defaultValue("0.0")
         .units(Units::MeterPerSquareSecond);
-
-        param("Save Data", m_args.save_data)
-        .defaultValue("false");
 
         param("Vertex Placements", m_args.vertices)
         .description("Position of the polygon vertices with respect to the center.")
@@ -163,9 +153,12 @@ namespace Simulators
       void
       onUpdateParameters(void)
       {
+        if (!m_args.active){
+          m_in_maneuver = false;
+          m_estimate_received = false;
+        }
         //! Set time step according to the execution frequency.
         c_ts = 1.0/getFrequency();
-        m_stop_time = Clock::get();
       }
 
       //! Reserve entity identifiers.
@@ -197,61 +190,20 @@ namespace Simulators
       void
       onResourceRelease(void)
       {
-        if (m_data_file.is_open()){
-          inf("Closing file.");
-          m_data_file.close();
-        }
       }
 
       void
       consume (const IMC::VehicleState* msg){
         if ( m_args.active ) {
+          if (msg->op_mode == IMC::VehicleState::VS_MANEUVER && msg->maneuver_type != 461){
+              if (!m_in_maneuver)
+                m_maneuver_start = Clock::get();
 
-          if (msg->op_mode == IMC::VehicleState::VS_MANEUVER){
-
-            //! Check if the maneuvering flag is set and if we need to start saving the data.
-            if (!m_in_maneuver){
-
-              m_maneuver_start = Clock::get();
-
-                if ( m_args.save_data ){
-
-                //! Get date and time for naming the file.
-                std::string timestr = Format::getTimeDate();
-
-                //! Remove illegal characters, year and seconds.
-                std::string name = timestr.substr(5,2)+timestr.substr(8,2)+timestr.substr(11,2)+timestr.substr(14,2);
-
-                //! Open the file in the designated MATLAB folder.
-                m_data_file.open("../../MATLAB/DUNE_Experiments/log/"+ name +".txt");
-
-                //! Confirm that we made the file.
-                if (!m_data_file)
-                  inf("Cannot open file.");
-                else{
-                  inf("Generated file %s to write.", name.c_str());
-                }
-
-              }
-            }
-            m_in_maneuver = true;
-          }else{
-
-            if (m_in_maneuver && !m_timer_on){
-              m_stop_time = Clock::get();
-              m_timer_on = true;
-            }
-            //! Wait a few seconds before closing the file.
-            if (m_timer_on && Clock::get()- m_stop_time > c_time_thresh){
-              if (m_data_file.is_open()){
-                inf("Closing file.");
-                m_data_file.close();
-                }
-
-              m_in_maneuver = false;
-              m_timer_on = false;
-              m_estimate_received = false;
-            }
+              m_in_maneuver = true;
+          }
+          else{
+            m_in_maneuver = false;
+            m_estimate_received = false;
           }
         }
       }
@@ -313,16 +265,6 @@ namespace Simulators
 
             onInitializeObstacle(lat,lon);
           }
-
-          if (m_in_maneuver && m_data_file.is_open()){
-
-            //! Write data to file if we are in a maneuver.
-            //! We save both the obstacle and vehicle state.
-
-            m_data_file << m_nepos.x<<"\n"<<m_nepos.y<<"\n"<<m_os.cog << "\n"
-            << m_os.sog << "\n" << msg->x << "\n" << msg->y << "\n" << msg->psi
-            << "\n" << msg->u << "\n" << msg->v << "\n" << m_r << "\n"<< msg->r << "\n";
-          }
         }
       }
 
@@ -368,7 +310,7 @@ namespace Simulators
                 psid = Angles::radians(m_args.heading + 45.0);
             }
             break;
-          case 5:
+          case 4:
            //! Half left turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
                 psid = Angles::radians(m_args.heading - 45.0);
@@ -410,21 +352,18 @@ namespace Simulators
         m_es.y = m_nepos.y;
         m_es.psi = m_os.cog;
         m_es.u = m_os.sog;
+        m_es.r = m_r;
         dispatch(m_es);
       }
 
       void
       task(void)
       {
-        if (m_args.active) {
-
           //! Send the state of the obstacle regularly, but only if the vehicle
           //! is in a maneuver and we have received the lat/lon coordinates.
           if (m_in_maneuver && m_estimate_received){
              sendState();
           }
-
-        }
       }
     };
   }
