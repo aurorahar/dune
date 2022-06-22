@@ -111,7 +111,7 @@ namespace Control
           param("Path Following", m_args.follow_path)
           .defaultValue("false");
           param("Look Ahead Distance", m_args.los_Delta)
-          .defaultValue("10.0");
+          .defaultValue("5.0");
           param("COLAV Time Out",m_args.timeout )
           .description("Minimum time since last received measurement before obstacle is made inactive.")
           .defaultValue("5.0");

@@ -51,6 +51,7 @@ namespace Simulators
       double a_max;
       double u_max;
       double turn_time;
+      double path_angle;
       bool active;
       int n_vertices;
       int mode;
@@ -145,6 +146,10 @@ namespace Simulators
         .description("Source id for sending the obstacle coordinates to Neptus.")
         .defaultValue("0x001F");
 
+        param("Path angle", m_args.path_angle)
+        .defaultValue("0.0")
+        .units(Units::Degree);
+
         bind<IMC::EstimatedState>(this);
         bind<IMC::VehicleState>(this);
       }
@@ -213,10 +218,10 @@ namespace Simulators
         //! Initialize obstacle states.
         m_os.lat = lat;
         m_os.lon = lon;
-        m_nepos.x = m_args.offset[0];
-        m_nepos.y = m_args.offset[1];
+        m_nepos.x = m_args.offset[0]*std::cos(Angles::radians(m_args.path_angle)) - m_args.offset[1]*std::sin(Angles::radians(m_args.path_angle));
+        m_nepos.y = m_args.offset[0]*std::sin(Angles::radians(m_args.path_angle)) + m_args.offset[1]*std::cos(Angles::radians(m_args.path_angle));
         WGS84::displace(m_nepos.x, m_nepos.y,  &m_os.lat, &m_os.lon);
-        m_os.cog = Math::Angles::radians(m_args.heading);
+        m_os.cog = Math::Angles::radians(m_args.heading+m_args.path_angle);
         m_os.sog = m_args.speed;
         m_os.label = "ObstacleState";
 
