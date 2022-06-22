@@ -46,6 +46,7 @@ namespace Control
         double d_margin;
         double weight;
         double los_Delta;
+        double timeout;
         bool follow_path;
       };
 
@@ -68,13 +69,12 @@ namespace Control
         int m_turn_dir;
 
         //! Obstacle state.
-        IMC::Target m_ob;     // Obstacle state
-        Point m_ooffsett;     // NE offset
-        double m_or;          // Estimated heading rate
-        double m_ts;          //! Time step
-        double m_time_last_received;    //! Time the last update was received
-        bool m_os_received;             //! If we have valid obstacle measurements
-        const double c_timeout = 5.0;
+        IMC::Target m_ob;                 // Obstacle state
+        Point m_ooffsett;                 // NE offset
+        double m_or;                      // Estimated heading rate
+        double m_ts;                      //! Simulation time step
+        double m_time_last_received;      //! Time the last update was received
+        bool m_os_received;               //! If we have valid obstacle measurements
 
         //! List to save the polygon vertices.
         IMC::MessageList<IMC::MapPoint> m_vertices;
@@ -112,6 +112,9 @@ namespace Control
           .defaultValue("false");
           param("Look Ahead Distance", m_args.los_Delta)
           .defaultValue("10.0");
+          param("COLAV Time Out",m_args.timeout )
+          .description("Minimum time since last received measurement before obstacle is made inactive.")
+          .defaultValue("5.0");
 
           bind<IMC::Target>(this);
           bind<IMC::MapFeature>(this);
@@ -304,14 +307,14 @@ namespace Control
                 else
                   m_turn_dir = std::abs(Angles::minSignedAngle(course,m_coll_cone[0])) <= std::abs(Angles::minSignedAngle(course,m_coll_cone[1])) ? 0 : 1;
 
-                inf("Avoiding collision.");
+                debug("Avoiding collision.");
               }
               //! Activate collision avoidance.
               m_ca_active = true;
             }
             else{
               if ( m_ca_active )
-                inf("Not avoiding collision.");
+                debug("Not avoiding collision.");
               //! Deactivate collision avoidance.
               m_ca_active = false;
             }
@@ -325,8 +328,8 @@ namespace Control
         {
           m_heading.value = m_args.follow_path ? ts.track_bearing + std::atan2(-ts.track_pos.y,m_args.los_Delta) : ts.los_angle;
 
-          if (m_os_received && Clock::get()- m_time_last_received >= c_timeout){
-            m_os_received = false; // If we haven't received any updates in 5 seconds, the current obstacle measurements are not valid
+          if (m_os_received && Clock::get()- m_time_last_received >= m_args.timeout){
+            m_os_received = false;
           }
 
           if (m_os_received){

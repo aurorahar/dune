@@ -208,7 +208,7 @@ namespace Simulators
         }
       }
 
-      void onInitializeObstacle(double lat, double lon){
+      void onInitializeState(double lat, double lon){
 
         //! Initialize obstacle states.
         m_os.lat = lat;
@@ -263,7 +263,7 @@ namespace Simulators
 
             WGS84::displace(msg->x, msg->y,  &lat, &lon);
 
-            onInitializeObstacle(lat,lon);
+            onInitializeState(lat,lon);
           }
         }
       }
