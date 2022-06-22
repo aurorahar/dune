@@ -300,25 +300,25 @@ namespace Simulators
           case 1:
             //! Right turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
-              psid = Angles::radians(m_args.heading + 90.0);
+              psid = Angles::radians(m_args.heading + m_args.path_angle + 90.0);
             }
             break;
           case 2:
             //! Left turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
-                psid = Angles::radians(m_args.heading -90.0);
+                psid = Angles::radians(m_args.heading  + m_args.path_angle -90.0);
             }
             break;
           case 3:
             //! Half right turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
-                psid = Angles::radians(m_args.heading + 45.0);
+                psid = Angles::radians(m_args.heading + m_args.path_angle  + 45.0);
             }
             break;
           case 4:
            //! Half left turn.
             if (Clock::get()-m_maneuver_start > m_args.turn_time){
-                psid = Angles::radians(m_args.heading - 45.0);
+                psid = Angles::radians(m_args.heading  + m_args.path_angle - 45.0);
             }
             break;
         }
