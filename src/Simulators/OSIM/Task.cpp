@@ -162,6 +162,7 @@ namespace Simulators
           m_in_maneuver = false;
           m_estimate_received = false;
         }
+
         //! Set time step according to the execution frequency.
         c_ts = 1.0/getFrequency();
       }
@@ -240,18 +241,33 @@ namespace Simulators
         m_polygon.feature_type = IMC::MapFeature::FTYPE_CONTOUREDPOLY;
 
         double dx, dy;
+        if (m_polygon.feature.size() == 0){
+          for (int i = 0; i < m_args.n_vertices; i++)
+          {
+            IMC::MapPoint map_point;
+            map_point.lat = m_os.lat;
+            map_point.lon = m_os.lon;
 
-        for (int i = 0; i < m_args.n_vertices; i++)
-        {
-          IMC::MapPoint map_point;
-          map_point.lat = m_os.lat;
-          map_point.lon = m_os.lon;
+            dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading+m_args.path_angle));
+            dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading+m_args.path_angle));
+            WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
 
-          dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-          dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading));
-          WGS84::displace(dx, dy,  &map_point.lat, &map_point.lon);
+            m_polygon.feature.push_back(map_point);
+          }
+      }else{
+          int i = 0;
 
-          m_polygon.feature.push_back(map_point);
+          for (IMC::MapPoint * p : m_polygon.feature)
+          {
+            p->lat =m_os.lat;
+            p->lon =m_os.lon;
+
+            dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading+m_args.path_angle));
+            dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+Angles::radians(m_args.heading+m_args.path_angle));
+
+            WGS84::displace(dx, dy,  &p->lat, &p->lon);
+            i++;
+          }
         }
       }
 
@@ -336,17 +352,18 @@ namespace Simulators
         //! Update vertices according to center position.
         int i = 0;
 
-        for (IMC::MapPoint * p : m_polygon.feature)
-        {
-          p->lat =m_os.lat;
-          p->lon =m_os.lon;
+          for (IMC::MapPoint * p : m_polygon.feature)
+          {
+            p->lat =m_os.lat;
+            p->lon =m_os.lon;
 
-          double dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
-          double dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+            double dx = m_args.vertices[2*i]*std::cos(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
+            double dy = m_args.vertices[2*i]*std::sin(Angles::radians(m_args.vertices[2*i+1])+m_os.cog);
 
-          WGS84::displace(dx, dy,  &p->lat, &p->lon);
-          i++;
-        }
+            WGS84::displace(dx, dy,  &p->lat, &p->lon);
+            i++;
+          }
+
 
         //! Send the messages
         dispatch(m_polygon);
